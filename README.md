@@ -41,16 +41,19 @@
 ## Використання
 
 ```python
-from src.extractor import MedCATExtractor
+from src.utils import load_model_pack
+from src.extractor import extract_entities
 
-# Ініціалізація екстрактора
-extractor = MedCATExtractor()
+# Завантаження моделі (підтримує .zip або розпаковану директорію)
+cat = load_model_pack("models/v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip")
 
 # Обробка тексту
 text = "Пацієнт скаржиться на головний біль та підвищену температуру."
-results = extractor.extract_entities(text)
+results = extract_entities(cat, text)
 print(results)
 ```
+
+Модуль `src.utils` містить один вхідний пункт для завантаження моделей (`load_model_pack`), а `src.extractor` фокусується на викликах для вилучення сутностей (`extract_entities`). Це дозволяє уникнути дубльованої логіки роботи з MedCAT.
 
 ## Залежності
 

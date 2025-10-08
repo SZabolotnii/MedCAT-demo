@@ -24,4 +24,4 @@ def load_model_pack(model_pack_path: str | Path) -> "CAT":
     if not resolved_path.exists():
         raise FileNotFoundError(f"Model pack not found: {resolved_path}")
 
-    return CAT.load_model_pack(resolved_path)
+    return CAT.load_model_pack(str(resolved_path))
