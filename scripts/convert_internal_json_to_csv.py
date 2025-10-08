@@ -12,7 +12,8 @@ represents a single keyword/value combination. Use it like so:
 ```
 python -m scripts.convert_internal_json_to_csv \
     --input data/internal.json \
-    --output data/internal.csv
+    --output data/internal.csv \
+    --short-output data/internal_short.csv  # optional compact CSV
 ```
 """
 
@@ -22,11 +23,12 @@ import argparse
 import csv
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Mapping, Set
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Sequence, Set
 
 DEFAULT_INPUT = Path("data/internal.json")
 DEFAULT_OUTPUT = Path("data/internal.csv")
 DEFAULT_CLUSTERS = Path("data/valid_clusters.json")
+DEFAULT_SHORT_OUTPUT = Path("data/internal_short.csv")
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +52,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Optional path to clusters JSON used to enrich rows with titles "
             "(default: data/valid_clusters.json)."
+        ),
+    )
+    parser.add_argument(
+        "--short-output",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to write a compact CSV without data_value/data_hints. "
+            f"If omitted, short CSV is not generated. (Suggested default: {DEFAULT_SHORT_OUTPUT})"
         ),
     )
     return parser.parse_args()
@@ -155,7 +166,7 @@ def normalise_rows(
                 }
 
 
-def write_csv(rows: Iterable[Dict[str, str]], path: Path) -> None:
+def write_csv(rows: Sequence[Dict[str, str]], path: Path) -> None:
     fieldnames = [
         "source",
         "keyword",
@@ -175,11 +186,43 @@ def write_csv(rows: Iterable[Dict[str, str]], path: Path) -> None:
             writer.writerow(row)
 
 
+def write_short_csv(rows: Sequence[Dict[str, str]], path: Path) -> None:
+    fieldnames = [
+        "source",
+        "keyword",
+        "uid",
+        "cluster",
+        "cluster_title",
+        "keyword_hints",
+    ]
+
+    # Deduplicate rows that would become identical after dropping value columns.
+    seen: Set[tuple[str, ...]] = set()
+    filtered_rows: List[Dict[str, str]] = []
+
+    for row in rows:
+        key = tuple(row.get(field, "") for field in fieldnames)
+        if key in seen:
+            continue
+        seen.add(key)
+        filtered_rows.append({field: row.get(field, "") for field in fieldnames})
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as dst:
+        writer = csv.DictWriter(dst, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(filtered_rows)
+
+
 def main() -> None:
     args = parse_args()
     records = load_records(args.input)
     cluster_titles = load_cluster_titles(args.clusters)
-    write_csv(normalise_rows(records, cluster_titles), args.output)
+    rows = list(normalise_rows(records, cluster_titles))
+    write_csv(rows, args.output)
+
+    if args.short_output:
+        write_short_csv(rows, args.short_output)
 
 
 if __name__ == "__main__":
