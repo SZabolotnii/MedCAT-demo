@@ -1,0 +1,9 @@
+medcat[spacy,meta-cat,deid,rel-cat,dict-ner]~=2.0.0
+torch==2.8.0
+scikit-learn==1.6.1
+scipy==1.13.1
+transformers==4.41.0
+peft==0.9.0
+datasets==2.21.0
+tokenizers==0.19.1
+pytest>=7.0,<9.0
