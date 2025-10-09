@@ -7,7 +7,7 @@
 ```
 .
 ├── models/
-│   ├── umls_sm_pt2ch_533bab5115c6c2d6.zip           # UMLS модель
+│   ├── IEE_MedCAT_v1.zip           # IEE модель
 │   ├── v2_Snomed2025_MIMIC_IV_bbe806e192df009f/     # SNOMED модель
 │   └── v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip  # Архів SNOMED моделі
 ├── src/
@@ -45,10 +45,10 @@ from src.utils import load_model_pack
 from src.extractor import extract_entities
 
 # Завантаження моделі (підтримує .zip або розпаковану директорію)
-cat = load_model_pack("models/v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip")
+cat = load_model_pack("models/IEE_MedCAT_v1.zip")
 
 # Обробка тексту
-text = "Пацієнт скаржиться на головний біль та підвищену температуру."
+text = "The patient complains of headache and fever."
 results = extract_entities(cat, text)
 print(results)
 ```
@@ -123,5 +123,10 @@ python -m scripts.convert_internal_json_to_csv
    ```
 5. Використати отриманий пак у Gradio інтерфейсі (він уже з'явиться у списку
    моделей). Якщо пак ще не створений, інтерфейс підкаже замінити плейсхолдер.
+
+## Нотатки по інтерфейсу
+
+- Gradio (`python -m src.gradio_app`) автоматично підхоплює внутрішній пак `models/IEE_MedCAT_v1/` і показує назви кластерів з `data/internal_short.csv`. Якщо запускаєте файл напряму (`.venv/bin/python src/gradio_app.py`), імпорт пакетів також працює — додано fallback для абсолютних імпортів.
+- Стовпчик «Кластер» у таблиці може бути `—` для моделей, у яких `type_ids` відсутні у нашій онтології або пакет зовнішній (без `data/internal_short.csv`).
 
 Для швидких перевірок доступні синтетичні документи в `data/test_docs/`.

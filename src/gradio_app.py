@@ -21,6 +21,27 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models"
 CLUSTER_MAP: Dict[str, str] | None = None
 
+PREFERRED_MODEL = "IEE_MedCAT_v1"
+SAMPLE_TEXTS: dict[str, str] = {
+    "Приклад 1": (
+        "The patient presented with long-standing type 2 diabetes mellitus and hypertension. "
+        "Laboratory values demonstrated elevated HbA1c, persistent hyperglycemia, and intermittent "
+        "hypokalemia requiring supplementation. Despite metformin therapy, fasting glucose remained high, "
+        "so endocrinology recommended adding basal insulin and a repeat metabolic panel in two weeks."
+    ),
+    "Приклад 2": (
+        "The microbiology report indicates amoxicillin/clavulanate sensitivity after three days of treatment. "
+        "The same assay confirmed ampicillin sensitivity but noted no response to ciprofloxacin. Continue "
+        "monitoring for any delayed hypersensitivity reactions."
+    ),
+    "Приклад 3": (
+        "During the procedure an aerosol therapy was administered intranasally twice per day. Nursing staff "
+        "documented mild epistaxis afterwards but no other complications. Follow-up instructions emphasise "
+        "proper humidification for any future aerosol therapy intranasally delivered at home."
+    ),
+}
+
+
 
 @dataclass(frozen=True)
 class EntityRow:
@@ -164,7 +185,7 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
 
 def build_demo() -> gr.Blocks:
     model_choices = _available_models()
-    preferred_default = "IEE_MedCAT_v1"
+    preferred_default = "я"
     if preferred_default in model_choices:
         default_model = preferred_default
     else:
@@ -199,12 +220,30 @@ def build_demo() -> gr.Blocks:
                 step=0.05,
             )
 
+
+        with gr.Row():
+            example_choices = gr.Radio(
+                choices=list(SAMPLE_TEXTS.keys()),
+                label="Приклади текстів",
+                value=list(SAMPLE_TEXTS.keys())[0],
+            )
+            load_example_btn = gr.Button("Завантажити приклад")
+
         text_input = gr.Textbox(
             label="Вхідний текст",
             placeholder="Введіть клінічний запис...",
             lines=8,
         )
         run_button = gr.Button("Запустити")
+
+        def _load_example(example_key: str) -> str:
+            return SAMPLE_TEXTS.get(example_key, "")
+
+        load_example_btn.click(
+            fn=_load_example,
+            inputs=[example_choices],
+            outputs=[text_input],
+        )
 
         with gr.Row():
             entities_table = gr.Dataframe(
