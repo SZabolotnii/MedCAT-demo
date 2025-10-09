@@ -30,9 +30,11 @@ SAMPLE_TEXTS: dict[str, str] = {
         "so endocrinology recommended adding basal insulin and a repeat metabolic panel in two weeks."
     ),
     "Приклад 2": (
-        "The microbiology report indicates amoxicillin/clavulanate sensitivity after three days of treatment. "
-        "The same assay confirmed ampicillin sensitivity but noted no response to ciprofloxacin. Continue "
-        "monitoring for any delayed hypersensitivity reactions."
+        "Patient is an 88 male presenting to the ED with complaints of "
+        "decreased p.o. intake and behavioral changes over the past few days. History is "
+        "obtained from the son. She states that the patient has a history of "
+        "Alzheimer's dementia. He normally walks unassisted but today could not bear "
+        "weight in the lower extremities."
     ),
     "Приклад 3": (
         "During the procedure an aerosol therapy was administered intranasally twice per day. Nursing staff "
@@ -185,7 +187,7 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
 
 def build_demo() -> gr.Blocks:
     model_choices = _available_models()
-    preferred_default = "я"
+    preferred_default = PREFERRED_MODEL
     if preferred_default in model_choices:
         default_model = preferred_default
     else:
@@ -274,4 +276,4 @@ def launch(*, share: bool = False, server_port: int | None = None) -> None:
 
 
 if __name__ == "__main__":
-    launch(share=True)
+    launch()
