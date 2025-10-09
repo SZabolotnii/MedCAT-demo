@@ -92,3 +92,36 @@ python -m scripts.convert_internal_json_to_csv
 ## Ліцензія
 
 Цей проект використовується для демонстраційних цілей.
+
+## Кастомна внутрішня онтологія (підготовка)
+
+1. Згенерувати CSV у форматі MedCAT та метадані комбінованих hints:
+   ```bash
+   python -m scripts.transform_to_medcat_format \
+       --input data/internal_short.csv \
+       --output data/internal_medcat_v2.csv
+   ```
+2. Побудувати CDB зі словником:
+   ```bash
+   python -m scripts.create_cdb_v2 \
+       --csv data/internal_medcat_v2.csv \
+       --output-dir models/custom_internal_demo_pack
+   ```
+3. Запустити швидку валідацію на синтетичних нотатках:
+   ```bash
+   python -m scripts.validate_phase1a \
+       --model models/custom_internal_demo_pack \
+       --combined-hints data/internal_combined_hints.json \
+       --test-set data/test_clinical_notes.json
+   ```
+   Результат буде записаний у `reports/phase1a_validation.md`.
+4. (Опційно) Запакувати результат для поширення:
+   ```bash
+   python -m scripts.create_model_pack \
+       --source-dir models/custom_internal_demo_pack \
+       --output models/custom_internal_demo_pack.zip
+   ```
+5. Використати отриманий пак у Gradio інтерфейсі (він уже з'явиться у списку
+   моделей). Якщо пак ще не створений, інтерфейс підкаже замінити плейсхолдер.
+
+Для швидких перевірок доступні синтетичні документи в `data/test_docs/`.

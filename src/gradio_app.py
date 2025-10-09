@@ -11,10 +11,10 @@ import gradio as gr
 try:
     # Package imports (python -m src.gradio_app)
     from .extractor import extract_entities
-    from .utils import load_model_pack
+    from .utils import load_model_pack_auto
 except ImportError:  # pragma: no cover - fallback when run as a script
     from extractor import extract_entities
-    from utils import load_model_pack
+    from utils import load_model_pack_auto
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models"
@@ -64,6 +64,13 @@ def _resolve_model_path(model_name: str) -> Path:
     return target
 
 
+def _is_placeholder_model(model_path: Path) -> bool:
+    """Detect placeholder packs that should not be loaded yet."""
+    if model_path.is_dir() and (model_path / "PLACEHOLDER.txt").exists():
+        return True
+    return False
+
+
 def _to_json_safe(value: Any) -> Any:
     """Recursively convert dict keys to strings for JSON serialization."""
     if isinstance(value, dict):
@@ -80,7 +87,14 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
         return [], {}, "Введіть текст для аналізу."
 
     model_path = _resolve_model_path(model_name)
-    cat = load_model_pack(model_path)
+    if _is_placeholder_model(model_path):
+        return (
+            [],
+            {},
+            "Обраний пак є плейсхолдером. Запустіть пайплайн створення кастомної моделі "
+            "та замініть вміст `models/custom_internal_demo_pack/` на реальний MedCAT пак.",
+        )
+    cat = load_model_pack_auto(model_path)
     raw_result = extract_entities(cat, text)
     entities = raw_result.get("entities", {})
 
@@ -109,11 +123,15 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
 
 def build_demo() -> gr.Blocks:
     model_choices = _available_models()
-    preferred_default = "v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip"
+    preferred_default = "custom_internal_demo_pack"
     if preferred_default in model_choices:
         default_model = preferred_default
     else:
-        default_model = model_choices[0] if model_choices else ""
+        fallback_default = "v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip"
+        if fallback_default in model_choices:
+            default_model = fallback_default
+        else:
+            default_model = model_choices[0] if model_choices else ""
 
     with gr.Blocks(title="MedCAT Entity Extraction Demo") as demo:
         gr.Markdown(

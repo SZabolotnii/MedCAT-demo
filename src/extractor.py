@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 try:
     # Package import (e.g. python -m src.extractor)
-    from .utils import load_model_pack
+    from .utils import load_model_pack_auto
 except ImportError:  # pragma: no cover - fallback for running as a script
-    from utils import load_model_pack
+    from utils import load_model_pack_auto
 
 if TYPE_CHECKING:  # pragma: no cover - hints only
     from medcat.cat import CAT
@@ -25,8 +26,9 @@ def extract_entities(cat: "CAT", text: str) -> dict:
 if __name__ == "__main__":
     # Для тесту
     # model_path = "models/umls_sm_pt2ch_533bab5115c6c2d6.zip"
-    model_path = "models/v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip"
-    cat = load_model_pack(model_path)
+    # model_path = "models/v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip"
+    model_path = Path("models/custom_internal_demo_pack")
+    cat = load_model_pack_auto(model_path)
     sample_text = "The patient has diabetes, hypertension, and myocardial infarction."
     ents = extract_entities(cat, sample_text)
     print("Сутності:", ents)
