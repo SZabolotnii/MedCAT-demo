@@ -274,4 +274,4 @@ def launch(*, share: bool = False, server_port: int | None = None) -> None:
 
 
 if __name__ == "__main__":
-    launch()
+    launch(share=True)
