@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path("models/custom_internal_demo_pack"),
+        default=Path("models/IEE_MedCAT_v1"),
         help="Path to the custom MedCAT pack directory or zip.",
     )
     parser.add_argument(

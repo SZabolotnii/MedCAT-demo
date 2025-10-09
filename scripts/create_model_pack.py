@@ -13,13 +13,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source-dir",
         type=Path,
-        default=Path("models/custom_internal_demo_pack"),
+        default=Path("models/IEE_MedCAT_v1"),
         help="Directory with the generated CDB, config, stats and optional metadata.",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("models/custom_internal_demo_pack.zip"),
+        default=Path("models/IEE_MedCAT_v1.zip"),
         help="Where to write the zipped model pack.",
     )
     return parser.parse_args()

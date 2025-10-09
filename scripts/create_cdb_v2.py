@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("models/custom_internal_demo_pack"),
+        default=Path("models/IEE_MedCAT_v1"),
         help="Directory where the generated CDB and metadata will be stored.",
     )
     parser.add_argument(

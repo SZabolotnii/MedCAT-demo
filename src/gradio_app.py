@@ -122,7 +122,7 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
             [],
             {},
             "Обраний пак є плейсхолдером. Запустіть пайплайн створення кастомної моделі "
-            "та замініть вміст `models/custom_internal_demo_pack/` на реальний MedCAT пак.",
+            "та замініть вміст `models/IEE_MedCAT_v1/` на реальний MedCAT пак.",
         )
     cat = load_model_pack_auto(model_path)
     raw_result = extract_entities(cat, text)
@@ -164,7 +164,7 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
 
 def build_demo() -> gr.Blocks:
     model_choices = _available_models()
-    preferred_default = "custom_internal_demo_pack"
+    preferred_default = "IEE_MedCAT_v1"
     if preferred_default in model_choices:
         default_model = preferred_default
     else:
