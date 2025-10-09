@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import csv
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 import gradio as gr
 
@@ -18,6 +19,7 @@ except ImportError:  # pragma: no cover - fallback when run as a script
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models"
+CLUSTER_MAP: Dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -25,21 +27,23 @@ class EntityRow:
     """Normalized entity row used for rendering in the table."""
 
     pretty_name: str
-    cui: str
+    cluster_title: str
     detected_name: str
     accuracy: float
     start: int
     end: int
+    cui: str
 
     @classmethod
-    def from_raw(cls, payload: dict[str, Any]) -> "EntityRow":
+    def from_raw(cls, payload: dict[str, Any], cluster_title: str) -> "EntityRow":
         return cls(
             pretty_name=payload.get("pretty_name", ""),
-            cui=str(payload.get("cui", "")),
+            cluster_title=cluster_title,
             detected_name=payload.get("detected_name", ""),
             accuracy=float(payload.get("acc", 0.0) or 0.0),
             start=int(payload.get("start", -1) or -1),
             end=int(payload.get("end", -1) or -1),
+            cui=str(payload.get("cui", "")),
         )
 
 
@@ -71,6 +75,32 @@ def _is_placeholder_model(model_path: Path) -> bool:
     return False
 
 
+def _cluster_titles() -> Dict[str, str]:
+    global CLUSTER_MAP
+    if CLUSTER_MAP is not None:
+        return CLUSTER_MAP
+
+    mapping: Dict[str, str] = {}
+    csv_path = PROJECT_ROOT / "data/internal_short.csv"
+    if csv_path.exists():
+        with csv_path.open("r", encoding="utf-8") as src:
+            reader = csv.DictReader(src)
+            for row in reader:
+                cui = (row.get("uid") or "").strip()
+                cluster_title = (row.get("cluster_title") or "").strip()
+                cluster_id = (row.get("cluster") or "").strip()
+                if cluster_id and cluster_title:
+                    mapping[cluster_id] = cluster_title
+                    mapping[cluster_id.lower()] = cluster_title
+                # fallback by CUI if cluster id missing
+                if not cluster_id and cui and cluster_title:
+                    mapping[cui] = cluster_title
+                    mapping[cui.lower()] = cluster_title
+
+    CLUSTER_MAP = mapping
+    return mapping
+
+
 def _to_json_safe(value: Any) -> Any:
     """Recursively convert dict keys to strings for JSON serialization."""
     if isinstance(value, dict):
@@ -99,12 +129,23 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
     entities = raw_result.get("entities", {})
 
     rows = []
+    cluster_map = _cluster_titles()
     for entity in entities.values():
-        row = EntityRow.from_raw(entity)
+        cluster_title = "—"
+        type_ids = entity.get("type_ids") or []
+        for type_id in type_ids:
+            title = cluster_map.get(type_id) or cluster_map.get(str(type_id).lower())
+            if title:
+                cluster_title = title
+                break
+        if cluster_title == "—":
+            cui = str(entity.get("cui", "") or "")
+            cluster_title = cluster_map.get(cui) or cluster_map.get(cui.lower(), "—")
+        row = EntityRow.from_raw(entity, cluster_title=cluster_title)
         if row.accuracy >= min_accuracy:
             rows.append([
                 row.pretty_name,
-                row.cui,
+                row.cluster_title,
                 row.detected_name,
                 f"{row.accuracy:.3f}",
                 row.start,
@@ -167,7 +208,7 @@ def build_demo() -> gr.Blocks:
 
         with gr.Row():
             entities_table = gr.Dataframe(
-                headers=["Назва", "CUI", "Виявлене значення", "Впевненість", "Початок", "Кінець"],
+                headers=["Назва", "Кластер", "Виявлене значення", "Впевненість", "Початок", "Кінець"],
                 datatype=["str", "str", "str", "str", "number", "number"],
                 row_count=(0, "dynamic"),
                 col_count=6,
