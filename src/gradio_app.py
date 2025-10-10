@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import csv
+import html
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 
 import gradio as gr
 
@@ -135,9 +136,83 @@ def _to_json_safe(value: Any) -> Any:
     return value
 
 
-def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[list[list[Any]], dict[str, Any], str]:
+def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
+    entities = raw_result.get("entities") or {}
+    spans: Dict[Tuple[int, int, str], Dict[str, Any]] = {}
+
+    for entity in entities.values():
+        start = entity.get("start")
+        end = entity.get("end")
+        if isinstance(start, int) and isinstance(end, int) and end > start:
+            key = (start, end, "keyword")
+            spans.setdefault(
+                key,
+                {
+                    "start": start,
+                    "end": end,
+                    "type": "keyword",
+                    "label": entity.get("pretty_name") or entity.get("detected_name") or entity.get("cui"),
+                },
+            )
+
+        for hint in entity.get("value_hints") or []:
+            h_start = hint.get("start")
+            h_end = hint.get("end")
+            if isinstance(h_start, int) and isinstance(h_end, int) and h_end > h_start:
+                key = (h_start, h_end, "value")
+                spans.setdefault(
+                    key,
+                    {
+                        "start": h_start,
+                        "end": h_end,
+                        "type": "value",
+                        "label": hint.get("value") or hint.get("pattern") or hint.get("type"),
+                    },
+                )
+
+    if not spans:
+        return f"<div class='medcat-highlight'>{html.escape(text)}</div>"
+
+    ordered_spans = sorted(spans.values(), key=lambda item: (item["start"], -(item["end"] - item["start"])))
+    pieces: List[str] = []
+    cursor = 0
+    for span in ordered_spans:
+        start = span["start"]
+        end = span["end"]
+        if start > cursor:
+            pieces.append(html.escape(text[cursor:start]))
+        segment = html.escape(text[start:end])
+        css_class = "keyword-span" if span["type"] == "keyword" else "value-span"
+        title = html.escape(span.get("label") or "")
+        pieces.append(f"<span class='{css_class}' title='{title}'>{segment}</span>")
+        cursor = max(cursor, end)
+
+    if cursor < len(text):
+        pieces.append(html.escape(text[cursor:]))
+
+    style = """
+    <style>
+    .medcat-highlight { font-family: var(--body-font); line-height: 1.5; white-space: pre-wrap; }
+    .medcat-highlight .keyword-span {
+        border: 1px solid #c0392b;
+        background: rgba(192, 57, 43, 0.15);
+        padding: 0 2px;
+        border-radius: 3px;
+    }
+    .medcat-highlight .value-span {
+        border: 1px solid #27ae60;
+        background: rgba(39, 174, 96, 0.15);
+        padding: 0 2px;
+        border-radius: 3px;
+    }
+    </style>
+    """
+    return f"{style}<div class='medcat-highlight'>{''.join(pieces)}</div>"
+
+
+def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[list[list[Any]], dict[str, Any], str, str]:
     if not text.strip():
-        return [], {}, "Введіть текст для аналізу."
+        return [], {}, "Введіть текст для аналізу.", "<div class='medcat-highlight'></div>"
 
     model_path = _resolve_model_path(model_name)
     if _is_placeholder_model(model_path):
@@ -146,6 +221,7 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
             {},
             "Обраний пак є плейсхолдером. Запустіть пайплайн створення кастомної моделі "
             "та замініть вміст `models/IEE_MedCAT_v1/` на реальний MedCAT пак.",
+            "<div class='medcat-highlight'></div>",
         )
     cat = load_model_pack_auto(model_path)
     raw_result = extract_entities(cat, text)
@@ -181,8 +257,9 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
         message = f"Знайдено {len(rows)} сутностей."
 
     json_safe = _to_json_safe(raw_result)
+    highlight_html = _render_highlight(text, raw_result)
 
-    return rows, json_safe, message
+    return rows, json_safe, highlight_html, message
 
 
 def build_demo() -> gr.Blocks:
@@ -257,13 +334,14 @@ def build_demo() -> gr.Blocks:
                 value=[],
             )
             raw_json = gr.JSON(label="Сирий результат MedCAT")
+        text_highlight = gr.HTML(label="Підсвічений текст")
 
         status = gr.Markdown()
 
         run_button.click(
             fn=_run_extraction,
             inputs=[text_input, model_dropdown, min_acc_slider],
-            outputs=[entities_table, raw_json, status],
+            outputs=[entities_table, raw_json, text_highlight, status],
         )
 
     return demo
