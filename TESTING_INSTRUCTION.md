@@ -32,7 +32,8 @@
    - перевірку відповідності словника (`tests/test_dictionary_coverage.py`);
    - NER-метрики на розмічених документах (`tests/test_entity_detection.py`);
    - gap-tolerant комбіновані підказки (`tests/test_combined_hints.py`);
-   - базовий бенчмарк продуктивності (`tests/test_performance_benchmark.py`).
+   - базовий бенчмарк продуктивності (`tests/test_performance_benchmark.py`);
+   - rule-based value-фільтри для `String` та числових кластерів (`tests/test_value_rules.py`).
 2. Випишіть попередження чи падіння тестів у `reports/phase1a_validation.md` або інший лог.
 
 ## 4. Запуск інтегрованого валідатора (щоденно)

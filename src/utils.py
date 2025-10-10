@@ -113,12 +113,10 @@ def _load_custom_phase1a_cat(path: Path) -> "CAT":
 
     if path.is_dir():
         combined = path / "internal_combined_hints.json"
-        wrapper = CustomCAT(
+        return CustomCAT(
             path,
             combined_hints_path=combined if combined.exists() else None,
         )
-        return wrapper.cat
-
     if path.suffix == ".zip":
         import tempfile
         import zipfile
@@ -128,10 +126,9 @@ def _load_custom_phase1a_cat(path: Path) -> "CAT":
             with zipfile.ZipFile(path, "r") as archive:
                 archive.extractall(extracted)
             combined = extracted / "internal_combined_hints.json"
-            wrapper = CustomCAT(
+            return CustomCAT(
                 extracted,
                 combined_hints_path=combined if combined.exists() else None,
             )
-            return wrapper.cat
 
     raise ValueError(f"Unsupported custom pack location: {path}")
