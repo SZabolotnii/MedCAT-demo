@@ -362,23 +362,23 @@ class CustomCAT:
     def _find_value_match(self, rule: KeywordRule, text: str, entity: Dict[str, Any]) -> Optional[ValueMatch]:
         """Locate textual or numeric value hints near an entity span."""
 
-        start = int(entity.get("start", 0))
-        end = int(entity.get("end", start))
-        window_start = max(0, start - self._VALUE_WINDOW_CHARS)
-        window_end = min(len(text), end + self._VALUE_WINDOW_CHARS)
+        entity_start = int(entity.get("start", 0))
+        entity_end = int(entity.get("end", entity_start))
+        window_start = max(0, entity_start - self._VALUE_WINDOW_CHARS)
+        window_end = min(len(text), entity_end + self._VALUE_WINDOW_CHARS)
         window = text[window_start:window_end]
 
         if rule.value_patterns:
             for pattern in rule.value_patterns:
                 match_obj = pattern.search(window)
                 if match_obj:
-                    start = window_start + match_obj.start()
-                    end = window_start + match_obj.end()
+                    match_start = window_start + match_obj.start()
+                    match_end = window_start + match_obj.end()
                     return ValueMatch(
                         text=match_obj.group(0),
                         matched_text=match_obj.group(0),
-                        start=start,
-                        end=end,
+                        start=match_start,
+                        end=match_end,
                         pattern=pattern.pattern,
                     )
 
@@ -389,28 +389,34 @@ class CustomCAT:
                     numeric_value = float(match.group())
                 except ValueError:
                     continue
-                start = window_start + match.start()
-                end = window_start + match.end()
+                match_start = window_start + match.start()
+                match_end = window_start + match.end()
                 matches.append(
                     ValueMatch(
                         numeric=numeric_value,
                         matched_text=match.group(0),
-                        start=start,
-                        end=end,
+                        start=match_start,
+                        end=match_end,
                         pattern=None,
                     )
                 )
 
             if matches:
-                after = [m for m in matches if m.start is not None and m.start >= end]
+                after = [m for m in matches if m.start is not None and m.start >= entity_end]
                 if after:
-                    after.sort(key=lambda m: (m.start - end, m.start))
+                    after.sort(key=lambda m: (m.start - entity_end, m.start))
                     return after[0]
-                before = [m for m in matches if m.end is not None and m.end <= start]
+                before = [m for m in matches if m.end is not None and m.end <= entity_start]
                 if before:
-                    before.sort(key=lambda m: (start - m.end, m.start))
+                    before.sort(key=lambda m: (entity_start - m.end, m.start))
                     return before[0]
-                matches.sort(key=lambda m: (abs(((m.start or 0) + (m.end or 0)) / 2 - ((start + end) / 2)), m.start))
+                entity_mid = (entity_start + entity_end) / 2
+                matches.sort(
+                    key=lambda m: (
+                        abs(((m.start or 0) + (m.end or 0)) / 2 - entity_mid),
+                        m.start,
+                    )
+                )
                 return matches[0]
 
         return None

@@ -81,32 +81,32 @@
     "results": {
       "1": {
         "batch_size": 1.0,
-        "total_time": 0.036856082995655015,
-        "docs_per_second": 81.39768950362065,
-        "start_memory_mb": 900.90625,
-        "end_memory_mb": 900.9375,
+        "total_time": 0.03601933299796656,
+        "docs_per_second": 83.2886050435571,
+        "start_memory_mb": 874.6875,
+        "end_memory_mb": 874.71875,
         "memory_delta_mb": 0.03125,
-        "peak_memory_mb": 900.9375,
+        "peak_memory_mb": 874.71875,
         "documents_processed": 3.0
       },
       "10": {
         "batch_size": 10.0,
-        "total_time": 0.036264499998651445,
-        "docs_per_second": 82.72553048054047,
-        "start_memory_mb": 900.9375,
-        "end_memory_mb": 900.9375,
+        "total_time": 0.03563783298886847,
+        "docs_per_second": 84.18020256554473,
+        "start_memory_mb": 874.71875,
+        "end_memory_mb": 874.71875,
         "memory_delta_mb": 0.0,
-        "peak_memory_mb": 900.9375,
+        "peak_memory_mb": 874.71875,
         "documents_processed": 3.0
       },
       "50": {
         "batch_size": 50.0,
-        "total_time": 0.036344292006106116,
-        "docs_per_second": 82.5439108704051,
-        "start_memory_mb": 900.9375,
-        "end_memory_mb": 900.9375,
+        "total_time": 0.03563100000610575,
+        "docs_per_second": 84.19634586416093,
+        "start_memory_mb": 874.71875,
+        "end_memory_mb": 874.71875,
         "memory_delta_mb": 0.0,
-        "peak_memory_mb": 900.9375,
+        "peak_memory_mb": 874.71875,
         "documents_processed": 3.0
       }
     },
