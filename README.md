@@ -6,17 +6,37 @@
 
 ```
 .
-├── models/
-│   ├── IEE_MedCAT_v1.zip           # IEE модель
-│   ├── v2_Snomed2025_MIMIC_IV_bbe806e192df009f/     # SNOMED модель
-│   └── v2_Snomed2025_MIMIC_IV_bbe806e192df009f.zip  # Архів SNOMED моделі
-├── src/
-│   ├── __init__.py
-│   ├── extractor.py               # Основний модуль для екстракції сутностей
-│   └── utils.py                   # Утиліти для роботи з моделями
-├── requirements.txt               # Залежності Python
-├── .gitignore                     # Git ignore файл
-└── README.md                      # Документація
+├── data/                          # Тестові набори й службові CSV/JSON
+│   ├── phase1a_annotated_entities.json
+│   ├── test_clinical_notes.json
+│   ├── test_docs/
+│   └── valid_clusters.json
+├── info/                          # Довідкові матеріали та методології
+│   ├── MedCAT Testing Methodology & Framework.md
+│   └── ...
+├── models/                        # Пакети MedCAT
+│   ├── IEE_MedCAT_v1/             # Розпакований кастомний пак
+│   └── IEE_MedCAT_v1.zip          # Архів для розповсюдження
+├── reports/                       # Автоматично згенеровані звіти
+│   ├── phase1a_validation.md
+│   └── validation_suite.json
+├── scripts/                       # Утиліти для перетворення й тестування
+│   ├── run_validation_suite.py
+│   ├── validate_phase1a.py
+│   └── performance_benchmark.py
+├── src/                           # Джерельний код
+│   ├── custom_cat_v2.py
+│   ├── extractor.py
+│   ├── gradio_app.py
+│   ├── testing_framework/
+│   └── utils.py
+├── tests/                         # Pytest-специфікації
+│   ├── test_dictionary_coverage.py
+│   └── ...
+├── TESTING_INSTRUCTION.md         # Покрокова інструкція
+├── TESTING_METHODOLOGY.md         # Стратегія тестування
+├── requirements.txt
+└── README.md
 ```
 
 ## Встановлення та налаштування
@@ -117,10 +137,10 @@ python -m scripts.convert_internal_json_to_csv
    Результат буде записаний у `reports/phase1a_validation.md`.
 4. (Опційно) Запакувати результат для поширення:
    ```bash
-python -m scripts.create_model_pack \
+   python -m scripts.create_model_pack \
        --source-dir models/IEE_MedCAT_v1 \
        --output models/IEE_MedCAT_v1.zip
-```
+   ```
 5. Використати отриманий пак у Gradio інтерфейсі (він уже з'явиться у списку
    моделей). Якщо пак ще не створений, інтерфейс підкаже замінити плейсхолдер.
 
@@ -159,3 +179,17 @@ python -m scripts.create_model_pack \
       --output reports/performance_benchmark.json
   ```
   Підтримується `--baseline` для порівняння з попередніми запускaми.
+
+- Контрольні набори:
+  - `data/test_clinical_notes.json` — 3 короткі нотатки для швидкої перевірки; усі очікувані CUI зберігаються у верхньому регістрі й синхронізовані з поточною моделлю (100 % покриття).
+  - `data/phase1a_annotated_entities.json` — розмічений датасет для обчислення F1/Precision/Recall.
+  - `data/test_docs/` — синтетичні тексти для бенчмарку продуктивності.
+
+- Звіти та артефакти:
+  - `reports/phase1a_validation.md` — узагальнена вивантаження Phase 1A (`scripts.validate_phase1a`).
+  - `reports/validation_suite.json` — агрегований звіт інтегрованого валідатора з ключовими метриками.
+  - `reports/performance_benchmark.json` — останній замір швидкодії; за потреби зберігайте попередній у `reports/baseline_performance.json`.
+
+Повний опис методології та чеклісти для ручних перевірок:
+- `TESTING_METHODOLOGY.md` — стратегія та критерії GO/NO-GO.
+- `TESTING_INSTRUCTION.md` — покрокова інструкція запуску тестів і збора артефактів.
