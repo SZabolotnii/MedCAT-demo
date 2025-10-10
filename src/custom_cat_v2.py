@@ -37,6 +37,10 @@ class ValueMatch:
 
     numeric: Optional[float] = None
     text: Optional[str] = None
+    matched_text: Optional[str] = None
+    start: Optional[int] = None
+    end: Optional[int] = None
+    pattern: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -272,6 +276,9 @@ class CustomCAT:
                 if match.numeric is None or not rule.is_value_in_range(match.numeric):
                     keys_to_remove.append(key)
                     missing_value_cuis.add(str(cui).upper())
+                    continue
+
+            self._record_value_hint(entity, match, rule)
 
         for key in keys_to_remove:
             entities.pop(key, None)
@@ -326,9 +333,13 @@ class CustomCAT:
                         continue
                     if rule.is_numeric and (match.numeric is None or not rule.is_value_in_range(match.numeric)):
                         continue
+                else:
+                    match = self._find_value_match(rule, text, entity_dict)
 
                 new_key = self._next_entity_key(entities)
                 entity_dict["id"] = new_key
+                if match is not None:
+                    self._record_value_hint(entity_dict, match, rule)
                 entities[new_key] = entity_dict
                 existing_cuis.add(cui)
                 added_cuis.add(cui)
@@ -357,8 +368,17 @@ class CustomCAT:
 
         if rule.value_patterns:
             for pattern in rule.value_patterns:
-                if pattern.search(window):
-                    return ValueMatch(text=pattern.pattern)
+                match_obj = pattern.search(window)
+                if match_obj:
+                    start = window_start + match_obj.start()
+                    end = window_start + match_obj.end()
+                    return ValueMatch(
+                        text=match_obj.group(0),
+                        matched_text=match_obj.group(0),
+                        start=start,
+                        end=end,
+                        pattern=pattern.pattern,
+                    )
 
         if rule.is_numeric:
             for match in self._NUMBER_PATTERN.finditer(window):
@@ -366,7 +386,15 @@ class CustomCAT:
                     numeric_value = float(match.group())
                 except ValueError:
                     continue
-                return ValueMatch(numeric=numeric_value)
+                start = window_start + match.start()
+                end = window_start + match.end()
+                return ValueMatch(
+                    numeric=numeric_value,
+                    matched_text=match.group(0),
+                    start=start,
+                    end=end,
+                    pattern=None,
+                )
 
         return None
 
@@ -636,3 +664,44 @@ class CustomCAT:
                 max_key = max(max_key, int(key))
 
         return max_key + 1
+
+    @staticmethod
+    def _record_value_hint(entity: Dict[str, Any], match: ValueMatch, rule: KeywordRule) -> None:
+        if match is None:
+            return
+
+        hints = entity.setdefault("value_hints", [])
+        hint_payload: Dict[str, Any] = {
+            "rule_keyword": rule.keyword,
+        }
+
+        if match.numeric is not None:
+            hint_payload.update(
+                {
+                    "type": "numeric",
+                    "value": match.numeric,
+                    "matched_text": match.matched_text,
+                }
+            )
+        elif match.matched_text:
+            hint_payload.update(
+                {
+                    "type": "text",
+                    "value": match.matched_text,
+                    "pattern": match.pattern,
+                }
+            )
+        else:
+            hint_payload.update(
+                {
+                    "type": "unknown",
+                    "value": match.text,
+                    "pattern": match.pattern,
+                }
+            )
+
+        if match.start is not None and match.end is not None:
+            hint_payload["start"] = match.start
+            hint_payload["end"] = match.end
+
+        hints.append(hint_payload)

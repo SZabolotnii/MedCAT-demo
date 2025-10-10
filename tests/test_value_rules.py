@@ -27,6 +27,8 @@ def test_numeric_value_required(custom_cat: CustomCAT) -> None:
     custom_cat._apply_value_rules(text, entities)
 
     assert entities, "Numeric entity should be kept when value is present and within range."
+    hints = entities[0].get("value_hints")
+    assert hints and hints[0]["type"] == "numeric"
 
 
 def test_numeric_out_of_range_removed(custom_cat: CustomCAT) -> None:
@@ -80,6 +82,14 @@ def test_extract_entities_adds_numeric_with_value(custom_cat: CustomCAT) -> None
     detected_cuis = {ent["cui"] for ent in result.get("entities", {}).values()}
     assert "5B51B989ADA20C282C2487DA" in detected_cuis, "Heart rate with numeric hint should be restored."
 
+    hr_entity = next(ent for ent in result["entities"].values() if ent["cui"] == "5B51B989ADA20C282C2487DA")
+    hints = hr_entity.get("value_hints")
+    assert hints and hints[0]["type"] == "numeric"
+
+    level_entity = next(ent for ent in result["entities"].values() if ent["cui"] == "5F59DFE25786951388090907")
+    level_hint = level_entity.get("value_hints")
+    assert level_hint and level_hint[0]["type"] == "text"
+
 
 def test_combination_requires_all_components(custom_cat: CustomCAT) -> None:
     text = "Aspirin 100 mg taken daily."
@@ -102,3 +112,7 @@ def test_textual_value_keeps_string_cluster(custom_cat: CustomCAT) -> None:
 
     detected_cuis = {ent["cui"] for ent in result.get("entities", {}).values()}
     assert "5F59DFE25786951388090907" in detected_cuis, "Heart Rate Level expected with textual value hint."
+
+    entity = next(ent for ent in result["entities"].values() if ent["cui"] == "5F59DFE25786951388090907")
+    hints = entity.get("value_hints")
+    assert hints and hints[0]["type"] == "text" and "high" in hints[0]["value"].lower()
