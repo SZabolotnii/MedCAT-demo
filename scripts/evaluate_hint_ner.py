@@ -35,17 +35,11 @@ def evaluate_dataset(
     *,
     model_name: str,
     lexicon_path: Path,
-    similarity_threshold: float,
-    top_k: int,
-    max_ngram: int,
 ) -> Tuple[Dict[str, float], List[Dict[str, Any]]]:
     try:
         nlp = load_spacy_with_hints(
             model_name,
             lexicon_path=lexicon_path,
-            similarity_threshold=similarity_threshold,
-            top_k=top_k,
-            max_ngram=max_ngram,
         )
     except OSError as exc:
         raise SystemExit(
@@ -71,6 +65,9 @@ def evaluate_dataset(
                 "hint_source": span._.hint_source,
                 "hint_score": float(span._.hint_score or 0.0),
                 "hint_term": span._.hint_term,
+                "hint_cluster_title": span._.hint_cluster_title,
+                "hint_cluster_id": span._.hint_cluster_id,
+                "hint_canonical_keyword": span._.hint_canonical_keyword,
             }
             for span in iter_hint_spans(doc)
         ]
@@ -139,9 +136,6 @@ def main() -> None:
         default=Path("data/hints/hint_lexicon.json"),
         help="Path to hint lexicon JSON file.",
     )
-    parser.add_argument("--similarity-threshold", type=float, default=0.78, help="Cosine similarity threshold.")
-    parser.add_argument("--top-k", type=int, default=4, help="Number of candidates to consider from the hint index.")
-    parser.add_argument("--max-ngram", type=int, default=5, help="Maximum n-gram length for candidate spans.")
     parser.add_argument(
         "--output",
         type=Path,
@@ -156,9 +150,6 @@ def main() -> None:
         dataset,
         model_name=args.model,
         lexicon_path=args.lexicon,
-        similarity_threshold=args.similarity_threshold,
-        top_k=args.top_k,
-        max_ngram=args.max_ngram,
     )
 
     _print_metrics(metrics)

@@ -38,9 +38,6 @@ def load_spacy_with_hints(
     model_name: str = DEFAULT_MODEL_NAME,
     *,
     lexicon_path: str | Path | None = None,
-    similarity_threshold: float = 0.78,
-    top_k: int = 4,
-    max_ngram: int = 5,
     disable: Iterable[str] | None = None,
 ) -> Language:
     """Load a spaCy pipeline and inject the HintNER component."""
@@ -52,15 +49,8 @@ def load_spacy_with_hints(
     if "hint_ner" in nlp.pipe_names:
         nlp.remove_pipe("hint_ner")
 
-    config = {
-        "lexicon_path": str(lexicon),
-        "similarity_threshold": similarity_threshold,
-        "top_k": top_k,
-        "max_ngram": max_ngram,
-    }
-
     insertion_point = "ner" if "ner" in nlp.pipe_names else None
-    nlp.add_pipe("hint_ner", config=config, before=insertion_point)
+    nlp.add_pipe("hint_ner", config={"lexicon_path": str(lexicon)}, before=insertion_point)
     return nlp
 
 
@@ -77,18 +67,12 @@ def extract_hint_entities(
     nlp: Optional[Language] = None,
     model_name: str = DEFAULT_MODEL_NAME,
     lexicon_path: str | Path | None = None,
-    similarity_threshold: float = 0.78,
-    top_k: int = 4,
-    max_ngram: int = 5,
     disable: Iterable[str] | None = None,
 ) -> List[Dict[str, object]]:
     """Process text and return hint-based entities with metadata."""
     pipeline = nlp or load_spacy_with_hints(
         model_name,
         lexicon_path=lexicon_path,
-        similarity_threshold=similarity_threshold,
-        top_k=top_k,
-        max_ngram=max_ngram,
         disable=disable,
     )
 
@@ -105,6 +89,10 @@ def extract_hint_entities(
                 "hint_score": float(getattr(span._, "hint_score", 0.0) or 0.0),
                 "hint_source": getattr(span._, "hint_source", None),
                 "hint_term": getattr(span._, "hint_term", None),
+                "hint_cluster_title": getattr(span._, "hint_cluster_title", None),
+                "hint_cluster_id": getattr(span._, "hint_cluster_id", None),
+                "hint_canonical_keyword": getattr(span._, "hint_canonical_keyword", None),
+                "hint_matched_text": getattr(span._, "hint_matched_text", None),
             }
         )
     return entities

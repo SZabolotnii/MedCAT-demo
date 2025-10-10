@@ -187,7 +187,10 @@ def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
                     "start": h_start,
                     "end": h_end,
                     "type": "hint",
-                    "label": hint.get("hint_id") or hint.get("label") or hint.get("hint_term"),
+                    "label": hint.get("hint_canonical_keyword")
+                    or hint.get("label")
+                    or hint.get("hint_term")
+                    or hint.get("hint_id"),
                 },
             )
 
@@ -320,10 +323,10 @@ def _run_extraction(
             [
                 hint.get("text", ""),
                 hint.get("label", ""),
+                hint.get("hint_matched_text", ""),
                 hint.get("hint_id", ""),
-                f"{float(hint.get('hint_score', 0.0) or 0.0):.3f}",
                 hint.get("hint_source", "") or "",
-                hint.get("hint_term", "") or "",
+                hint.get("hint_cluster_title", "") or "",
                 hint.get("start", -1),
                 hint.get("end", -1),
             ]
@@ -416,7 +419,16 @@ def build_demo() -> gr.Blocks:
                 value=[],
             )
             hint_entities_table = gr.Dataframe(
-                headers=["Текст", "Лейбл", "Hint ID", "Схожість", "Джерело", "Термін", "Початок", "Кінець"],
+                headers=[
+                    "Текст",
+                    "Канонічний ківорд",
+                    "Фактичний збіг",
+                    "Hint ID",
+                    "Джерело",
+                    "Кластер",
+                    "Початок",
+                    "Кінець",
+                ],
                 datatype=["str", "str", "str", "str", "str", "str", "number", "number"],
                 row_count=(0, "dynamic"),
                 col_count=8,

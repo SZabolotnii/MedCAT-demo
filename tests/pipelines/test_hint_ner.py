@@ -37,8 +37,8 @@ def test_load_hint_lexicon(tmp_path: Path) -> None:
     assert concept.uid == "uid-1"
     assert concept.label == "Primary Term"
     assert concept.cluster_title == "Finding"
-    assert "primary term" in concept.keyword_terms
-    assert "positive" in concept.value_terms
+    assert "Primary Term" in concept.patterns
+    assert "primary term" in concept.patterns
 
 
 @pytest.mark.skipif(spacy is None, reason="spaCy is required for hint_ner tests")
@@ -74,14 +74,14 @@ def test_hint_ner_phrase_match(tmp_path: Path) -> None:
     assert hint_entities, "Expected HintNER to add an entity span"
     hint = hint_entities[0]
     assert hint.label_ == "Chest Pain"
-    assert hint._.hint_source in {"phrase", "vector:keyword"}
+    assert hint._.hint_source == "phrase"
     assert hint._.hint_cluster_title == "Symptom"
     assert hint._.hint_canonical_keyword == "Chest Pain"
     assert "chest pain" in hint.text.lower()
 
 
 @pytest.mark.skipif(spacy is None, reason="spaCy is required for hint_ner tests")
-def test_hint_ner_vector_similarity(tmp_path: Path) -> None:
+def test_hint_ner_canonical_only(tmp_path: Path) -> None:
     try:
         nlp = spacy.load("en_core_web_md")
     except OSError:
@@ -96,7 +96,6 @@ def test_hint_ner_vector_similarity(tmp_path: Path) -> None:
                     "cluster_title": "Finding",
                     "canonical_keyword": "Blood Pressure",
                     "keyword_terms": [],
-                    "value_terms": ["blood pressure"],
                     "sources": ["unit-test"],
                 }
             ]
@@ -106,22 +105,14 @@ def test_hint_ner_vector_similarity(tmp_path: Path) -> None:
 
     if "hint_ner" in nlp.pipe_names:
         nlp.remove_pipe("hint_ner")
-    nlp.add_pipe(
-        "hint_ner",
-        config={
-            "lexicon_path": str(lexicon_path),
-            "similarity_threshold": 0.6,
-            "top_k": 3,
-            "max_ngram": 4,
-        },
-    )
+    nlp.add_pipe("hint_ner", config={"lexicon_path": str(lexicon_path)})
 
     doc = nlp("Vitals today show the blood pressure remains stable and within range.")
     hint_entities = [ent for ent in doc.ents if getattr(ent._, "hint_id", None) == "bp-uid"]
-    assert hint_entities, "Expected vector search to add a hint-based entity"
+    assert hint_entities, "Expected HintNER to add an entity span from canonical keyword"
     hint = hint_entities[0]
     assert hint.label_ == "Blood Pressure"
-    assert hint._.hint_source.startswith("vector")
+    assert hint._.hint_source == "phrase"
     assert hint._.hint_cluster_title == "Finding"
-    assert hint._.hint_term == "blood pressure"
+    assert hint._.hint_term.lower() == "blood pressure"
     assert hint._.hint_canonical_keyword == "Blood Pressure"

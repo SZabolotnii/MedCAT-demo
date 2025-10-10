@@ -1,13 +1,11 @@
-"""spaCy component that projects keyword/value hints into vector space for NER."""
+"""spaCy component that injects ontology keyword matches as entities."""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Sequence, Tuple
-
-import numpy as np
+from typing import Dict, List, Tuple
 from spacy.language import Language
 from spacy.matcher import PhraseMatcher
 from spacy.tokens import Doc, Span
@@ -16,26 +14,15 @@ from spacy.util import filter_spans
 
 @dataclass(frozen=True)
 class HintConcept:
-    """Canonical concept enriched with keyword and value representations."""
+    """Canonical concept enriched with keyword patterns."""
 
     uid: str
     label: str
     canonical_keyword: str
     cluster_id: str
     cluster_title: str
-    keyword_terms: Tuple[str, ...]
-    value_terms: Tuple[str, ...]
+    patterns: Tuple[str, ...]
     sources: Tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class HintVectorMatch:
-    """Result of a vector similarity lookup against the hint index."""
-
-    score: float
-    concept: HintConcept
-    term_text: str
-    term_type: str
 
 
 def _normalize_cluster_label(cluster_title: str, cluster_id: str) -> str:
@@ -74,12 +61,13 @@ def load_hint_lexicon(path: str | Path) -> List[HintConcept]:
         cluster_title = str(item.get("cluster_title") or "").strip()
         cluster_label = _normalize_cluster_label(cluster_title, cluster_id)
         canonical_keyword = str(item.get("canonical_keyword") or "").strip()
-        keyword_terms = tuple(
-            term.strip() for term in item.get("keyword_terms") or [] if isinstance(term, str) and term.strip()
-        )
-        value_terms = tuple(
-            term.strip() for term in item.get("value_terms") or [] if isinstance(term, str) and term.strip()
-        )
+        if not canonical_keyword:
+            # Skip entries without canonical keywords to align with ontology keywords only.
+            continue
+        pattern_terms = {
+            canonical_keyword,
+            *(term.strip() for term in item.get("keyword_terms") or [] if isinstance(term, str) and term.strip()),
+        }
         sources = tuple(
             source.strip() for source in item.get("sources") or [] if isinstance(source, str) and source.strip()
         )
@@ -90,88 +78,15 @@ def load_hint_lexicon(path: str | Path) -> List[HintConcept]:
                 canonical_keyword=canonical_keyword,
                 cluster_id=cluster_id,
                 cluster_title=cluster_title or cluster_label,
-                keyword_terms=keyword_terms,
-                value_terms=value_terms,
+                patterns=tuple(sorted({term for term in pattern_terms if term})),
                 sources=sources,
             )
         )
     return concepts
 
 
-class HintVectorIndex:
-    """Lightweight cosine-similarity index for hint embeddings."""
-
-    def __init__(self, nlp: Language, concepts: Sequence[HintConcept]) -> None:
-        self._nlp = nlp
-        vectors: List[np.ndarray] = []
-        metadata: List[Tuple[str, str, str, HintConcept]] = []
-
-        for concept in concepts:
-            for term in concept.keyword_terms:
-                vec = self._term_vector(term)
-                if vec is not None:
-                    vectors.append(vec)
-                    metadata.append(("keyword", term, concept.uid, concept))
-            for term in concept.value_terms:
-                vec = self._term_vector(term)
-                if vec is not None:
-                    vectors.append(vec)
-                    metadata.append(("value", term, concept.uid, concept))
-
-        if vectors:
-            self._matrix = np.stack(vectors).astype("float32")
-        else:
-            self._matrix = np.zeros((0, nlp.vocab.vectors_length or 0), dtype="float32")
-        self._metadata = metadata
-
-    def _term_vector(self, text: str) -> np.ndarray | None:
-        doc = self._nlp.make_doc(text)
-        if not doc:
-            return None
-        vector = doc.vector
-        if vector is None or vector.shape[0] == 0:
-            return None
-        norm = float(np.linalg.norm(vector))
-        if not norm:
-            return None
-        return (vector / norm).astype("float32")
-
-    def query(self, span: Span, top_k: int, min_score: float) -> List[HintVectorMatch]:
-        """Return top-k vector matches above the similarity threshold."""
-        if self._matrix.size == 0:
-            return []
-
-        vector = span.vector
-        if vector is None or vector.shape[0] == 0:
-            return []
-        norm = float(np.linalg.norm(vector))
-        if not norm:
-            return []
-        normalized = (vector / norm).astype("float32")
-        scores = self._matrix @ normalized
-
-        if scores.size <= top_k:
-            indices = np.argsort(-scores)
-        else:
-            top_indices = np.argpartition(scores, -top_k)[-top_k:]
-            indices = top_indices[np.argsort(-scores[top_indices])]
-
-        matches: List[HintVectorMatch] = []
-        for idx in indices:
-            score = float(scores[idx])
-            if score < min_score:
-                continue
-            term_type, term_text, _uid, concept = self._metadata[idx]
-            matches.append(HintVectorMatch(score=score, concept=concept, term_text=term_text, term_type=term_type))
-        return matches
-
-
 class HintNER:
     """spaCy pipeline component that injects hint-driven entity spans."""
-
-    _DEFAULT_THRESHOLD = 0.78
-    _DEFAULT_TOP_K = 4
-    _DEFAULT_MAX_NGRAM = 5
 
     def __init__(
         self,
@@ -179,21 +94,14 @@ class HintNER:
         name: str,
         *,
         lexicon_path: str,
-        similarity_threshold: float | None = None,
-        top_k: int | None = None,
-        max_ngram: int | None = None,
     ) -> None:
         self.nlp = nlp
         self.name = name
-        self.similarity_threshold = similarity_threshold or self._DEFAULT_THRESHOLD
-        self.top_k = top_k or self._DEFAULT_TOP_K
-        self.max_ngram = max_ngram or self._DEFAULT_MAX_NGRAM
 
         self.concepts = load_hint_lexicon(lexicon_path)
         self._concept_by_uid: Dict[str, HintConcept] = {concept.uid: concept for concept in self.concepts}
         self._phrase_matcher = PhraseMatcher(nlp.vocab, attr="LOWER")
         self._build_phrase_patterns()
-        self._vector_index = HintVectorIndex(nlp, self.concepts)
 
         self._ensure_extensions()
 
@@ -213,10 +121,12 @@ class HintNER:
             Span.set_extension("hint_cluster_id", default=None)
         if not Span.has_extension("hint_canonical_keyword"):
             Span.set_extension("hint_canonical_keyword", default=None)
+        if not Span.has_extension("hint_matched_text"):
+            Span.set_extension("hint_matched_text", default=None)
 
     def _build_phrase_patterns(self) -> None:
         for concept in self.concepts:
-            patterns = [self.nlp.make_doc(term) for term in concept.keyword_terms if term]
+            patterns = [self.nlp.make_doc(term) for term in concept.patterns if term]
             if patterns:
                 self._phrase_matcher.add(concept.uid, patterns)
 
@@ -232,24 +142,8 @@ class HintNER:
             if concept is None:
                 continue
             span = Span(doc, start, end, label=concept.label)
-            self._assign_metadata(span, concept, score=1.0, source="phrase", term_text=span.text)
+            self._assign_metadata(span, concept, score=1.0, source="phrase", term_text=concept.canonical_keyword)
             self._save_span(scored_spans, span, score=1.0)
-
-        for span in self._generate_candidate_spans(doc):
-            matches = self._vector_index.query(span, top_k=self.top_k, min_score=self.similarity_threshold)
-            if not matches:
-                continue
-            for match in matches:
-                concept = match.concept
-                new_span = Span(doc, span.start, span.end, label=concept.label)
-                self._assign_metadata(
-                    new_span,
-                    concept,
-                    score=match.score,
-                    source=f"vector:{match.term_type}",
-                    term_text=match.term_text,
-                )
-                self._save_span(scored_spans, new_span, score=match.score)
 
         if not scored_spans:
             return doc
@@ -270,6 +164,7 @@ class HintNER:
         span._.hint_cluster_title = concept.cluster_title
         span._.hint_cluster_id = concept.cluster_id
         span._.hint_canonical_keyword = concept.canonical_keyword or concept.label
+        span._.hint_matched_text = span.text
 
     @staticmethod
     def _save_span(
@@ -283,74 +178,21 @@ class HintNER:
         if existing is None or score > existing[0]:
             scored_spans[key] = (score, span)
 
-    def _generate_candidate_spans(self, doc: Doc) -> Iterator[Span]:
-        seen: set[Tuple[int, int]] = set()
-        # Nominal chunks provide strong candidate spans when the parser is available.
-        try:
-            for chunk in doc.noun_chunks:
-                if chunk.text.strip():
-                    seen.add((chunk.start, chunk.end))
-        except ValueError:
-            # Parser not available; noun_chunks unsupported.
-            pass
-
-        sentences: Iterable[Span]
-        if doc.has_annotation("SENT_START"):
-            sentences = doc.sents
-        else:
-            sentences = (doc,)
-
-        for sent in sentences:
-            for start in range(sent.start, sent.end):
-                token = doc[start]
-                if token.is_space or token.is_punct:
-                    continue
-                end_limit = min(sent.end, start + self.max_ngram)
-                for end in range(start + 1, end_limit + 1):
-                    span = doc[start:end]
-                    if not span.text.strip():
-                        continue
-                    if not any(ch.isalnum() for ch in span.text):
-                        continue
-                    if span[-1].is_punct:
-                        continue
-                    seen.add((span.start, span.end))
-
-        for start, end in sorted(seen):
-            span = doc[start:end]
-            if not span.text.strip():
-                continue
-            if not any(ch.isalnum() for ch in span.text):
-                continue
-            yield span
-
-
 @Language.factory(
     "hint_ner",
-    default_config={
-        "lexicon_path": "data/hints/hint_lexicon.json",
-        "similarity_threshold": HintNER._DEFAULT_THRESHOLD,
-        "top_k": HintNER._DEFAULT_TOP_K,
-        "max_ngram": HintNER._DEFAULT_MAX_NGRAM,
-    },
+    default_config={"lexicon_path": "data/hints/hint_lexicon.json"},
     assigns=["doc.ents"],
 )
 def create_hint_ner(  # type: ignore[override]
     nlp,
     name: str,
     lexicon_path: str,
-    similarity_threshold: float,
-    top_k: int,
-    max_ngram: int,
 ) -> HintNER:
     """Factory used by spaCy to construct the HintNER component."""
     return HintNER(
         nlp,
         name,
         lexicon_path=lexicon_path,
-        similarity_threshold=similarity_threshold,
-        top_k=top_k,
-        max_ngram=max_ngram,
     )
 
 
