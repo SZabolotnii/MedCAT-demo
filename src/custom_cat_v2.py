@@ -383,6 +383,7 @@ class CustomCAT:
                     )
 
         if rule.is_numeric:
+            matches: List[ValueMatch] = []
             for match in self._NUMBER_PATTERN.finditer(window):
                 try:
                     numeric_value = float(match.group())
@@ -390,13 +391,27 @@ class CustomCAT:
                     continue
                 start = window_start + match.start()
                 end = window_start + match.end()
-                return ValueMatch(
-                    numeric=numeric_value,
-                    matched_text=match.group(0),
-                    start=start,
-                    end=end,
-                    pattern=None,
+                matches.append(
+                    ValueMatch(
+                        numeric=numeric_value,
+                        matched_text=match.group(0),
+                        start=start,
+                        end=end,
+                        pattern=None,
+                    )
                 )
+
+            if matches:
+                after = [m for m in matches if m.start is not None and m.start >= end]
+                if after:
+                    after.sort(key=lambda m: (m.start - end, m.start))
+                    return after[0]
+                before = [m for m in matches if m.end is not None and m.end <= start]
+                if before:
+                    before.sort(key=lambda m: (start - m.end, m.start))
+                    return before[0]
+                matches.sort(key=lambda m: (abs(((m.start or 0) + (m.end or 0)) / 2 - ((start + end) / 2)), m.start))
+                return matches[0]
 
         return None
 
