@@ -1,0 +1,36 @@
+{
+  "results": {
+    "1": {
+      "batch_size": 1.0,
+      "total_time": 0.029989042006491218,
+      "docs_per_second": 100.0365399918624,
+      "start_memory_mb": 105.171875,
+      "end_memory_mb": 105.203125,
+      "memory_delta_mb": 0.03125,
+      "peak_memory_mb": 105.203125,
+      "documents_processed": 3.0
+    },
+    "10": {
+      "batch_size": 10.0,
+      "total_time": 0.02912333299900638,
+      "docs_per_second": 103.01018774541888,
+      "start_memory_mb": 105.203125,
+      "end_memory_mb": 105.203125,
+      "memory_delta_mb": 0.0,
+      "peak_memory_mb": 105.203125,
+      "documents_processed": 3.0
+    },
+    "50": {
+      "batch_size": 50.0,
+      "total_time": 0.02940541599673452,
+      "docs_per_second": 102.02202207692457,
+      "start_memory_mb": 105.203125,
+      "end_memory_mb": 105.21875,
+      "memory_delta_mb": 0.015625,
+      "peak_memory_mb": 105.21875,
+      "documents_processed": 3.0
+    }
+  },
+  "deltas": {},
+  "document_count": 3
+}

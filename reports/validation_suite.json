@@ -1,0 +1,118 @@
+{
+  "dictionary": {
+    "success": true,
+    "total_cuis": 7207,
+    "expected_cuis": 7207,
+    "missing_names": 0,
+    "missing_preferred": 12,
+    "preferred_name_coverage": 0.9983349521298738,
+    "expected_preferred_name_coverage": 0.9983349521298738,
+    "distinct_type_ids": 54,
+    "expected_type_ids": 54,
+    "unmapped_type_ids": []
+  },
+  "entity_detection": {
+    "success": true,
+    "metrics": {
+      "exact_match": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "tp": 5.0,
+        "fp": 0.0,
+        "fn": 0.0,
+        "matched": 5.0,
+        "total_predicted": 5.0,
+        "total_gold": 5.0
+      },
+      "partial_match": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "tp": 5.0,
+        "fp": 0.0,
+        "fn": 0.0,
+        "matched": 5.0,
+        "total_predicted": 5.0,
+        "total_gold": 5.0
+      },
+      "type_accuracy": {
+        "accuracy": 1.0,
+        "matched": 5.0,
+        "correct": 5.0
+      },
+      "entity_count": 5,
+      "gold_count": 5
+    },
+    "thresholds": {
+      "exact_f1": 0.75,
+      "partial_f1": 0.8,
+      "type_accuracy": 0.85
+    }
+  },
+  "combined_hints": {
+    "success": true,
+    "cases": [
+      {
+        "text": "Care team will check sugar before discharge.",
+        "expected": true,
+        "matched": true
+      },
+      {
+        "text": "Care team will check her blood sugar before discharge.",
+        "expected": true,
+        "matched": true
+      },
+      {
+        "text": "Care team will check her morning fasting sugar logs daily.",
+        "expected": true,
+        "matched": true
+      },
+      {
+        "text": "Care team will check her early morning fasting sugar routines carefully.",
+        "expected": false,
+        "matched": false
+      }
+    ],
+    "target_cui": "60758574BE555105F0BC5B6B"
+  },
+  "performance": {
+    "success": true,
+    "results": {
+      "1": {
+        "batch_size": 1.0,
+        "total_time": 0.032059125005616806,
+        "docs_per_second": 93.57710166682327,
+        "start_memory_mb": 108.109375,
+        "end_memory_mb": 108.21875,
+        "memory_delta_mb": 0.109375,
+        "peak_memory_mb": 108.21875,
+        "documents_processed": 3.0
+      },
+      "10": {
+        "batch_size": 10.0,
+        "total_time": 0.031996792000427376,
+        "docs_per_second": 93.75939937853549,
+        "start_memory_mb": 108.21875,
+        "end_memory_mb": 108.21875,
+        "memory_delta_mb": 0.0,
+        "peak_memory_mb": 108.21875,
+        "documents_processed": 3.0
+      },
+      "50": {
+        "batch_size": 50.0,
+        "total_time": 0.032383666999521665,
+        "docs_per_second": 92.63929251879698,
+        "start_memory_mb": 108.21875,
+        "end_memory_mb": 108.25,
+        "memory_delta_mb": 0.03125,
+        "peak_memory_mb": 108.25,
+        "documents_processed": 3.0
+      }
+    },
+    "thresholds": {
+      "docs_per_second": 10,
+      "memory_delta_mb": 2048
+    }
+  }
+}

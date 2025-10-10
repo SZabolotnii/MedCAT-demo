@@ -117,10 +117,10 @@ python -m scripts.convert_internal_json_to_csv
    Результат буде записаний у `reports/phase1a_validation.md`.
 4. (Опційно) Запакувати результат для поширення:
    ```bash
-   python -m scripts.create_model_pack \
+python -m scripts.create_model_pack \
        --source-dir models/IEE_MedCAT_v1 \
        --output models/IEE_MedCAT_v1.zip
-   ```
+```
 5. Використати отриманий пак у Gradio інтерфейсі (він уже з'явиться у списку
    моделей). Якщо пак ще не створений, інтерфейс підкаже замінити плейсхолдер.
 
@@ -130,3 +130,32 @@ python -m scripts.convert_internal_json_to_csv
 - Стовпчик «Кластер» у таблиці може бути `—` для моделей, у яких `type_ids` відсутні у нашій онтології або пакет зовнішній (без `data/internal_short.csv`).
 
 Для швидких перевірок доступні синтетичні документи в `data/test_docs/`.
+
+## Тестування та валідація
+
+- Запуск всіх автоматичних тестів:
+  ```bash
+  pytest
+  ```
+  Серед них є:
+  - покриття словника (`tests/test_dictionary_coverage.py`) з перевіркою відповідності `cdb_stats.json`;
+  - оцінка точності NER на `data/phase1a_annotated_entities.json`;
+  - тести на комбіновані підказки та їхню допускову «щілину»;
+  - бенчмарк продуктивності (`tests/test_performance_benchmark.py`).
+
+- Повний валідатор фази 1A з репортуванням:
+  ```bash
+  python -m scripts.run_validation_suite \
+      --model models/IEE_MedCAT_v1 \
+      --combined-hints models/IEE_MedCAT_v1/internal_combined_hints.json \
+      --performance-batch-sizes 1 10 50
+  ```
+  Скрипт генерує агрегований JSON у `reports/validation_suite.json` та сигналізує, чи виконані критерії (`F1 ≥ 0.75`, `Precision/Recall` тощо).
+
+- Окремий бенчмарк продуктивності з можливістю порівняння з базовим заміром:
+  ```bash
+  python -m scripts.performance_benchmark \
+      --documents data/test_docs \
+      --output reports/performance_benchmark.json
+  ```
+  Підтримується `--baseline` для порівняння з попередніми запускaми.

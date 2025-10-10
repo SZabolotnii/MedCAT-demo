@@ -61,10 +61,12 @@ def run_validation(cat: CustomCAT, documents: List[Dict[str, Any]]) -> Dict[str,
 
     for doc in documents:
         text = doc.get("text", "")
-        expected_cuis = [str(c) for c in doc.get("expected_cuis", [])]
+        expected_cuis = [str(c).upper() for c in doc.get("expected_cuis", [])]
         result = cat.extract_entities(text)
         entities = result.get("entities", {})
-        cuis_in_doc = {str(entity.get("cui")) for entity in entities.values() if entity.get("cui")}
+        cuis_in_doc = {
+            str(entity.get("cui")).upper() for entity in entities.values() if entity.get("cui")
+        }
 
         summary["total_entities"] += len(entities)
         summary["documents"].append(

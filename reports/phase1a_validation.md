@@ -4,7 +4,7 @@
 *Total entities:* 6
 *Avg entities per document:* 2.00
 
-*Expected CUI coverage:* 1 / 4 (25.0% hits)
+*Expected CUI coverage:* 5 / 5 (100.0% hits)
 
 ## Sample Documents
 
@@ -18,7 +18,7 @@ The microbiology report confirmed amoxicillin/clavulanate sensitivity and ampici
 Nurse reminded the patient to check her blood sugar before breakfast; a glucometer kit was provided for home monitoring.
 
 - Entities detected: 3
-- CUIs: 60758574BE555105F0BC5B6B, 60758574be555105f0bc5b6b, 60DDB086ED36804357CFF1B9
+- CUIs: 60758574BE555105F0BC5B6B, 60DDB086ED36804357CFF1B9
 - Combined hint matches:
   - check her blood sugar → 60758574be555105f0bc5b6b (source: check [combined_hint] sugar)
 
