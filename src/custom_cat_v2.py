@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import yaml
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -126,6 +127,9 @@ class CustomCAT:
 
     _VALUE_WINDOW_CHARS = 80
     _NUMBER_PATTERN = re.compile(r"\b\d+(?:\.\d+)?\b")
+    _KEYWORDS_WITHOUT_HINT: set[str] = set()
+    _CLUSTERS_WITHOUT_HINT: set[str] = set()
+    _HC_OVERRIDES_LOADED = False
 
     def __init__(
         self,
@@ -165,6 +169,7 @@ class CustomCAT:
         self.combined_matcher = CombinedHintMatcher(_load_combined_hints(combined_path))
 
         project_root = Path(__file__).resolve().parents[1]
+        self._ensure_hint_overrides(project_root)
         self._keyword_rules = self._load_keyword_rules(project_root)
 
     def __getattr__(self, name: str) -> Any:
@@ -278,22 +283,23 @@ class CustomCAT:
 
         candidate_cuis_to_attempt: set[str] = set(missing_value_cuis)
 
-        for cui, candidates in fallback_candidates.items():
-            if cui in existing_cuis or cui in candidate_cuis_to_attempt:
-                continue
+        if initial_entity_count == 0:
+            for cui, candidates in fallback_candidates.items():
+                if cui in existing_cuis or cui in candidate_cuis_to_attempt:
+                    continue
 
-            rule = self._keyword_rules.get(cui)
-            if not rule:
-                continue
+                rule = self._keyword_rules.get(cui)
+                if not rule:
+                    continue
 
-            if rule.required_components or rule.requires_value or rule.is_numeric:
-                candidate_cuis_to_attempt.add(cui)
-            elif self._should_enforce_surface(rule):
-                sample_entity = self._candidate_to_entity(candidates[0], cui)
-                if self._surface_matches_keyword(rule, sample_entity):
+                if rule.required_components or rule.requires_value or rule.is_numeric:
                     candidate_cuis_to_attempt.add(cui)
-            elif initial_entity_count == 0 and rule.value_patterns:
-                candidate_cuis_to_attempt.add(cui)
+                elif self._should_enforce_surface(rule):
+                    sample_entity = self._candidate_to_entity(candidates[0], cui)
+                    if self._surface_matches_keyword(rule, sample_entity):
+                        candidate_cuis_to_attempt.add(cui)
+                elif rule.value_patterns:
+                    candidate_cuis_to_attempt.add(cui)
 
         added_cuis: set[str] = set()
         for cui in candidate_cuis_to_attempt:
@@ -417,7 +423,15 @@ class CustomCAT:
             keyword = data.get("keyword", "")
             is_numeric = any(source == "numerical" for source in sources)
 
-            requires_value = is_numeric or ("string" in cluster_title.lower())
+            cluster_id = data.get("cluster_id", "")
+            requires_value = True
+            if (
+                cui in CustomCAT._KEYWORDS_WITHOUT_HINT
+                or str(cluster_id).upper() in CustomCAT._CLUSTERS_WITHOUT_HINT
+            ):
+                requires_value = False
+            elif is_numeric:
+                requires_value = True
 
             numeric_ranges: Tuple[Tuple[float, float], ...] = ()
             if is_numeric:
@@ -436,7 +450,7 @@ class CustomCAT:
             rules[cui] = KeywordRule(
                 cui=cui,
                 keyword=keyword,
-                cluster_id=data.get("cluster_id", ""),
+                cluster_id=str(cluster_id),
                 cluster_title=cluster_title,
                 sources=sources,
                 requires_value=requires_value,
@@ -499,18 +513,42 @@ class CustomCAT:
         return by_keyword, by_cluster
 
     @staticmethod
+    def _ensure_hint_overrides(project_root: Path) -> None:
+        if CustomCAT._HC_OVERRIDES_LOADED:
+            return
+
+        config_path = project_root / "data" / "hc.yaml"
+        if not config_path.exists():
+            CustomCAT._HC_OVERRIDES_LOADED = True
+            return
+
+        try:
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        except Exception:
+            CustomCAT._HC_OVERRIDES_LOADED = True
+            return
+
+        keyword_entries = config.get("ft_value_without_hint_by_keyword") or []
+        cluster_entries = config.get("ft_value_without_hint_by_cluster") or []
+
+        CustomCAT._KEYWORDS_WITHOUT_HINT = {
+            str(entry.get("id")).upper()
+            for entry in keyword_entries
+            if entry and entry.get("id")
+        }
+        CustomCAT._CLUSTERS_WITHOUT_HINT = {
+            str(entry.get("id")).upper()
+            for entry in cluster_entries
+            if entry and entry.get("id")
+        }
+        CustomCAT._HC_OVERRIDES_LOADED = True
+
+    @staticmethod
     def _derive_required_components(keyword: str, raw_values: Iterable[str]) -> Tuple[str, ...]:
         base = re.sub(r"\[.*?\]", "", keyword).lower()
         parts = [part.strip() for part in base.split("/") if part.strip()]
         if len(parts) > 1:
             return tuple(parts)
-
-        for value in raw_values:
-            lowered = value.lower()
-            if "/" in lowered:
-                value_parts = [part.strip() for part in lowered.split("/") if part.strip()]
-                if len(value_parts) > 1:
-                    return tuple(value_parts)
 
         return ()
 
