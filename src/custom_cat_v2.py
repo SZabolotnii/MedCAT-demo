@@ -51,6 +51,8 @@ class KeywordRule:
     is_numeric: bool
     numeric_ranges: Tuple[Tuple[float, float], ...] = ()
     value_patterns: Tuple[re.Pattern[str], ...] = ()
+    required_components: Tuple[str, ...] = ()
+    normalized_keyword: str = ""
 
     def is_value_in_range(self, value: float) -> bool:
         if not self.numeric_ranges:
@@ -250,6 +252,11 @@ class CustomCAT:
             if not rule or not rule.requires_value:
                 continue
 
+            if not self._components_present(rule, text, entity):
+                keys_to_remove.append(key)
+                missing_value_cuis.add(str(cui).upper())
+                continue
+
             match = self._find_value_match(rule, text, entity)
             if match is None:
                 keys_to_remove.append(key)
@@ -266,50 +273,72 @@ class CustomCAT:
 
         existing_cuis = {str(ent.get("cui")).upper() for ent in entities.values()}
 
+        if fallback_candidates is None:
+            fallback_candidates = self._collect_candidate_entities(text)
+
         candidate_cuis_to_attempt: set[str] = set(missing_value_cuis)
 
-        if initial_entity_count == 0:
-            if fallback_candidates is None:
-                fallback_candidates = self._collect_candidate_entities(text)
-            for cui in fallback_candidates.keys():
-                rule = self._keyword_rules.get(cui)
-                if not rule or (not rule.requires_value and not rule.value_patterns):
-                    continue
-                if cui in existing_cuis or cui in candidate_cuis_to_attempt:
-                    continue
+        for cui, candidates in fallback_candidates.items():
+            if cui in existing_cuis or cui in candidate_cuis_to_attempt:
+                continue
+
+            rule = self._keyword_rules.get(cui)
+            if not rule:
+                continue
+
+            if rule.required_components or rule.requires_value or rule.is_numeric:
+                candidate_cuis_to_attempt.add(cui)
+            elif self._should_enforce_surface(rule):
+                sample_entity = self._candidate_to_entity(candidates[0], cui)
+                if self._surface_matches_keyword(rule, sample_entity):
+                    candidate_cuis_to_attempt.add(cui)
+            elif initial_entity_count == 0 and rule.value_patterns:
                 candidate_cuis_to_attempt.add(cui)
 
-        if candidate_cuis_to_attempt:
-            if fallback_candidates is None:
-                fallback_candidates = self._collect_candidate_entities(text)
+        added_cuis: set[str] = set()
+        for cui in candidate_cuis_to_attempt:
+            if cui in existing_cuis or cui in added_cuis:
+                continue
 
-            for cui in candidate_cuis_to_attempt:
-                rule = self._keyword_rules.get(cui)
-                if (
-                    not rule
-                    or (not rule.requires_value and not rule.value_patterns)
-                    or cui in existing_cuis
-                    or cui in added_cuis
-                ):
+            rule = self._keyword_rules.get(cui)
+            if not rule:
+                continue
+
+            candidates = fallback_candidates.get(cui, [])
+            for candidate in candidates:
+                entity_dict = self._candidate_to_entity(candidate, cui)
+
+                if self._should_enforce_surface(rule) and not self._surface_matches_keyword(rule, entity_dict):
                     continue
 
-                candidates = fallback_candidates.get(cui, [])
-                for candidate in candidates:
-                    entity_dict = self._candidate_to_entity(candidate, cui)
+                if not self._components_present(rule, text, entity_dict):
+                    continue
+
+                if rule.requires_value:
                     match = self._find_value_match(rule, text, entity_dict)
                     if match is None:
                         continue
+                    if rule.is_numeric and (match.numeric is None or not rule.is_value_in_range(match.numeric)):
+                        continue
 
-                    if rule.is_numeric:
-                        if match.numeric is None or not rule.is_value_in_range(match.numeric):
-                            continue
+                new_key = self._next_entity_key(entities)
+                entity_dict["id"] = new_key
+                entities[new_key] = entity_dict
+                existing_cuis.add(cui)
+                added_cuis.add(cui)
+                break
 
-                    new_key = self._next_entity_key(entities)
-                    entity_dict["id"] = new_key
-                    entities[new_key] = entity_dict
-                    existing_cuis.add(cui)
-                    added_cuis.add(cui)
-                    break
+    def _components_present(self, rule: KeywordRule, text: str, entity: Dict[str, Any]) -> bool:
+        if not rule.required_components:
+            return True
+
+        start = int(entity.get("start", 0))
+        end = int(entity.get("end", start))
+        window_start = max(0, start - self._VALUE_WINDOW_CHARS)
+        window_end = min(len(text), end + self._VALUE_WINDOW_CHARS)
+        window = text[window_start:window_end].lower()
+
+        return all(component in window for component in rule.required_components)
 
     def _find_value_match(self, rule: KeywordRule, text: str, entity: Dict[str, Any]) -> Optional[ValueMatch]:
         """Locate textual or numeric value hints near an entity span."""
@@ -402,6 +431,8 @@ class CustomCAT:
                 if pattern is not None:
                     value_patterns.append(pattern)
 
+            components = CustomCAT._derive_required_components(keyword, data["raw_values"])
+
             rules[cui] = KeywordRule(
                 cui=cui,
                 keyword=keyword,
@@ -412,6 +443,8 @@ class CustomCAT:
                 is_numeric=is_numeric,
                 numeric_ranges=tuple(numeric_ranges),
                 value_patterns=tuple(value_patterns),
+                required_components=components,
+                normalized_keyword=CustomCAT._normalize_keyword(keyword),
             )
 
         return rules
@@ -464,6 +497,45 @@ class CustomCAT:
                 by_cluster.setdefault(cluster, []).extend(ranges)
 
         return by_keyword, by_cluster
+
+    @staticmethod
+    def _derive_required_components(keyword: str, raw_values: Iterable[str]) -> Tuple[str, ...]:
+        base = re.sub(r"\[.*?\]", "", keyword).lower()
+        parts = [part.strip() for part in base.split("/") if part.strip()]
+        if len(parts) > 1:
+            return tuple(parts)
+
+        for value in raw_values:
+            lowered = value.lower()
+            if "/" in lowered:
+                value_parts = [part.strip() for part in lowered.split("/") if part.strip()]
+                if len(value_parts) > 1:
+                    return tuple(value_parts)
+
+        return ()
+
+    @staticmethod
+    def _normalize_keyword(text: str) -> str:
+        cleaned = (text or "")
+        cleaned = re.sub(r"\[(.*?)\]", r" \1", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned.strip().lower())
+        return cleaned
+
+    def _surface_matches_keyword(self, rule: KeywordRule, entity: Dict[str, Any]) -> bool:
+        surface = (entity.get("source_value") or "").strip()
+        if not surface:
+            surface = (entity.get("detected_name") or "").replace("~", " ")
+        normalized_surface = self._normalize_keyword(surface)
+        return normalized_surface == rule.normalized_keyword
+
+    @staticmethod
+    def _should_enforce_surface(rule: KeywordRule) -> bool:
+        return (
+            not rule.required_components
+            and not rule.requires_value
+            and not rule.is_numeric
+            and not rule.value_patterns
+        )
 
     def _collect_candidate_entities(self, text: str) -> Dict[str, List[Any]]:
         """Run the pipeline up to the linker to collect NER candidates."""

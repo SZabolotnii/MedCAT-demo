@@ -79,3 +79,26 @@ def test_extract_entities_adds_numeric_with_value(custom_cat: CustomCAT) -> None
 
     detected_cuis = {ent["cui"] for ent in result.get("entities", {}).values()}
     assert "5B51B989ADA20C282C2487DA" in detected_cuis, "Heart rate with numeric hint should be restored."
+
+
+def test_combination_requires_all_components(custom_cat: CustomCAT) -> None:
+    text = "Aspirin 100 mg taken daily."
+    result = custom_cat.extract_entities(text)
+
+    detected = {ent["cui"] for ent in result.get("entities", {}).values()}
+    assert "5E5D196B91AC1162F7F7B549" in detected, "Base Aspirin dosage CUI expected."
+
+    combo_cuis = {
+        "616582D1DA2D098889C2DD19",  # Aspirin / Dipyridamole
+        "6539F7B3063E915B2098DB0B",  # Acetaminophen / Aspirin / Caffeine
+        "634CEC8BD4649E5E733DE2E7",  # Aspirin / butalbital / caffeine
+    }
+    assert detected.isdisjoint(combo_cuis), "Combined drug CUIs must not be emitted without all components."
+
+
+def test_textual_value_keeps_string_cluster(custom_cat: CustomCAT) -> None:
+    text = "My heart rate is high (120)."
+    result = custom_cat.extract_entities(text)
+
+    detected_cuis = {ent["cui"] for ent in result.get("entities", {}).values()}
+    assert "5F59DFE25786951388090907" in detected_cuis, "Heart Rate Level expected with textual value hint."
