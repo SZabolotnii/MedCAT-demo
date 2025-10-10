@@ -1,4 +1,5 @@
 medcat[spacy,meta-cat,deid,rel-cat,dict-ner]~=2.0.0
+spacy==3.8.7
 torch==2.8.0
 scikit-learn==1.6.1
 scipy==1.13.1

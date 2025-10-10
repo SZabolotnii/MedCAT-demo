@@ -26,7 +26,7 @@ CLUSTER_MAP: Dict[str, str] | None = None
 _MODEL_CACHE: Dict[str, Any] = {}
 
 # Global extraction cache for identical texts
-_EXTRACTION_CACHE: Dict[str, tuple[list[list[Any]], dict[str, Any], str, str]] = {}
+_EXTRACTION_CACHE: Dict[str, tuple[list[list[Any]], list[list[Any]], dict[str, Any], str, str]] = {}
 
 PREFERRED_MODEL = "IEE_MedCAT_v1"
 SAMPLE_TEXTS: dict[str, str] = {
@@ -176,6 +176,21 @@ def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
                     },
                 )
 
+    for hint in raw_result.get("hint_entities") or []:
+        h_start = hint.get("start")
+        h_end = hint.get("end")
+        if isinstance(h_start, int) and isinstance(h_end, int) and h_end > h_start:
+            key = (h_start, h_end, "hint")
+            spans.setdefault(
+                key,
+                {
+                    "start": h_start,
+                    "end": h_end,
+                    "type": "hint",
+                    "label": hint.get("hint_id") or hint.get("label") or hint.get("hint_term"),
+                },
+            )
+
     if not spans:
         return f"<div class='medcat-highlight'>{html.escape(text)}</div>"
 
@@ -188,7 +203,13 @@ def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
         if start > cursor:
             pieces.append(html.escape(text[cursor:start]))
         segment = html.escape(text[start:end])
-        css_class = "keyword-span" if span["type"] == "keyword" else "value-span"
+        span_type = span["type"]
+        if span_type == "keyword":
+            css_class = "keyword-span"
+        elif span_type == "value":
+            css_class = "value-span"
+        else:
+            css_class = "hint-span"
         label_value = span.get("label")
         label_str = "" if label_value is None else str(label_value)
         title = html.escape(label_str)
@@ -213,6 +234,12 @@ def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
         padding: 0 2px;
         border-radius: 3px;
     }
+    .medcat-highlight .hint-span {
+        border: 1px solid #2980b9;
+        background: rgba(41, 128, 185, 0.12);
+        padding: 0 2px;
+        border-radius: 3px;
+    }
     </style>
     """
     return f"{style}<div class='medcat-highlight'>{''.join(pieces)}</div>"
@@ -228,9 +255,14 @@ def _get_cached_model(model_path: Path) -> Any:
     return _MODEL_CACHE[model_key]
 
 
-def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[list[list[Any]], dict[str, Any], str, str]:
+def _run_extraction(
+    text: str,
+    model_name: str,
+    min_accuracy: float,
+) -> tuple[list[list[Any]], list[list[Any]], dict[str, Any], str, str]:
     if not text.strip():
-        return [], {}, "Введіть текст для аналізу.", "<div class='medcat-highlight'></div>"
+        empty_html = "<div class='medcat-highlight'></div>"
+        return [], [], {}, empty_html, "Введіть текст для аналізу."
 
     # Check cache first
     cache_key = f"{model_name}:{min_accuracy}:{hash(text)}"
@@ -241,15 +273,22 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
     if _is_placeholder_model(model_path):
         return (
             [],
+            [],
             {},
+            "<div class='medcat-highlight'></div>",
             "Обраний пак є плейсхолдером. Запустіть пайплайн створення кастомної моделі "
             "та замініть вміст `models/IEE_MedCAT_v1/` на реальний MedCAT пак.",
-            "<div class='medcat-highlight'></div>",
         )
     
     cat = _get_cached_model(model_path)
-    raw_result = extract_entities(cat, text)
+    try:
+        raw_result = extract_entities(cat, text, include_hint_metadata=True)
+    except RuntimeError as exc:
+        raw_result = extract_entities(cat, text)
+        raw_result.setdefault("hint_error", str(exc))
+
     entities = raw_result.get("entities", {})
+    hint_entities = raw_result.get("hint_entities") or []
 
     rows = []
     cluster_map = _cluster_titles()
@@ -275,15 +314,32 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
                 row.end,
             ])
 
+    hint_rows: list[list[Any]] = []
+    for hint in hint_entities:
+        hint_rows.append(
+            [
+                hint.get("text", ""),
+                hint.get("label", ""),
+                hint.get("hint_id", ""),
+                f"{float(hint.get('hint_score', 0.0) or 0.0):.3f}",
+                hint.get("hint_source", "") or "",
+                hint.get("hint_term", "") or "",
+                hint.get("start", -1),
+                hint.get("end", -1),
+            ]
+        )
+
     if not rows:
         message = "Сутностей не знайдено за заданими критеріями."
     else:
         message = f"Знайдено {len(rows)} сутностей."
+    if hint_entities:
+        message += f" Додатково HintNER знайшов {len(hint_entities)} підказок."
 
     json_safe = _to_json_safe(raw_result)
     highlight_html = _render_highlight(text, raw_result)
 
-    result = (rows, json_safe, highlight_html, message)
+    result = (rows, hint_rows, json_safe, highlight_html, message)
     _EXTRACTION_CACHE[cache_key] = result
     return result
 
@@ -359,6 +415,14 @@ def build_demo() -> gr.Blocks:
                 label="Розпізнані сутності",
                 value=[],
             )
+            hint_entities_table = gr.Dataframe(
+                headers=["Текст", "Лейбл", "Hint ID", "Схожість", "Джерело", "Термін", "Початок", "Кінець"],
+                datatype=["str", "str", "str", "str", "str", "str", "number", "number"],
+                row_count=(0, "dynamic"),
+                col_count=8,
+                label="HintNER Підказки",
+                value=[],
+            )
             raw_json = gr.JSON(label="Сирий результат MedCAT")
         text_highlight = gr.HTML(label="Підсвічений текст")
 
@@ -367,7 +431,7 @@ def build_demo() -> gr.Blocks:
         run_button.click(
             fn=_run_extraction,
             inputs=[text_input, model_dropdown, min_acc_slider],
-            outputs=[entities_table, raw_json, text_highlight, status],
+            outputs=[entities_table, hint_entities_table, raw_json, text_highlight, status],
         )
 
     return demo

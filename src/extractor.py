@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+try:
+    from .spacy_pipeline import extract_hint_entities
+except ImportError:
+    extract_hint_entities = None  # type: ignore[assignment]
 
 try:
     # Package import (e.g. python -m src.extractor)
@@ -15,16 +20,31 @@ if TYPE_CHECKING:  # pragma: no cover - hints only
     from medcat.cat import CAT
 
 
-def extract_entities(cat: "CAT", text: str) -> dict:
+def extract_entities(
+    cat: "CAT",
+    text: str,
+    *,
+    include_hint_metadata: bool = False,
+    hint_config: Optional[Dict[str, Any]] = None,
+) -> dict:
     """
     Здійснити витяг медичних сутностей з тексту.
     Повертає словник результатів.
     """
     # Use extract_entities for CustomCAT, get_entities for regular CAT
-    if hasattr(cat, 'extract_entities'):
-        return cat.extract_entities(text)
+    if hasattr(cat, "extract_entities"):
+        result: dict = cat.extract_entities(text)
     else:
-        return cat.get_entities(text, only_cui=False)
+        result = cat.get_entities(text, only_cui=False)
+
+    if include_hint_metadata and extract_hint_entities is not None:
+        hint_kwargs: Dict[str, Any] = dict(hint_config or {})
+        hint_list = extract_hint_entities(text, **hint_kwargs)
+        result["hint_entities"] = hint_list
+    elif include_hint_metadata:
+        raise RuntimeError("spaCy pipeline is unavailable. Ensure spaCy is installed before requesting hint metadata.")
+
+    return result
 
 
 if __name__ == "__main__":
