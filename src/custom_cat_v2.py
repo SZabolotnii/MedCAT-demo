@@ -345,6 +345,8 @@ class CustomCAT:
                 added_cuis.add(cui)
                 break
 
+        self._deduplicate_overlaps(entities)
+
     def _components_present(self, rule: KeywordRule, text: str, entity: Dict[str, Any]) -> bool:
         if not rule.required_components:
             return True
@@ -705,3 +707,39 @@ class CustomCAT:
             hint_payload["end"] = match.end
 
         hints.append(hint_payload)
+
+    @staticmethod
+    def _deduplicate_overlaps(entities: Dict[Any, Dict[str, Any]]) -> None:
+        """Remove overlapping entities with identical CUIs keeping the longest span."""
+
+        by_cui: Dict[str, List[Tuple[Any, int, int]]] = {}
+        for key, entity in entities.items():
+            cui = str(entity.get("cui") or "").upper()
+            start = entity.get("start")
+            end = entity.get("end")
+            if not cui or not isinstance(start, int) or not isinstance(end, int):
+                continue
+            by_cui.setdefault(cui, []).append((key, start, end))
+
+        to_remove: set[Any] = set()
+        for items in by_cui.values():
+            items.sort(key=lambda item: (item[1], -(item[2] - item[1])))
+            selected: List[Tuple[Any, int, int]] = []
+            for key, start, end in items:
+                span = (start, end)
+                length = end - start
+                if length <= 0:
+                    to_remove.add(key)
+                    continue
+                keep = True
+                for _, sel_start, sel_end in selected:
+                    if not (end <= sel_start or start >= sel_end):
+                        keep = False
+                        break
+                if keep:
+                    selected.append((key, start, end))
+                else:
+                    to_remove.add(key)
+
+        for key in to_remove:
+            entities.pop(key, None)

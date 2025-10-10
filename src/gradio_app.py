@@ -183,7 +183,9 @@ def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
             pieces.append(html.escape(text[cursor:start]))
         segment = html.escape(text[start:end])
         css_class = "keyword-span" if span["type"] == "keyword" else "value-span"
-        title = html.escape(span.get("label") or "")
+        label_value = span.get("label")
+        label_str = "" if label_value is None else str(label_value)
+        title = html.escape(label_str)
         pieces.append(f"<span class='{css_class}' title='{title}'>{segment}</span>")
         cursor = max(cursor, end)
 
