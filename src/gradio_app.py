@@ -22,6 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models"
 CLUSTER_MAP: Dict[str, str] | None = None
 
+# Global model cache to avoid reloading models on each request
+_MODEL_CACHE: Dict[str, Any] = {}
+
+# Global extraction cache for identical texts
+_EXTRACTION_CACHE: Dict[str, tuple[list[list[Any]], dict[str, Any], str, str]] = {}
+
 PREFERRED_MODEL = "IEE_MedCAT_v1"
 SAMPLE_TEXTS: dict[str, str] = {
     "Приклад 1": (
@@ -212,10 +218,25 @@ def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
     return f"{style}<div class='medcat-highlight'>{''.join(pieces)}</div>"
 
 
+def _get_cached_model(model_path: Path) -> Any:
+    """Get model from cache or load and cache it."""
+    model_key = str(model_path)
+    
+    if model_key not in _MODEL_CACHE:
+        _MODEL_CACHE[model_key] = load_model_pack_auto(model_path)
+    
+    return _MODEL_CACHE[model_key]
+
+
 def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[list[list[Any]], dict[str, Any], str, str]:
     if not text.strip():
         return [], {}, "Введіть текст для аналізу.", "<div class='medcat-highlight'></div>"
 
+    # Check cache first
+    cache_key = f"{model_name}:{min_accuracy}:{hash(text)}"
+    if cache_key in _EXTRACTION_CACHE:
+        return _EXTRACTION_CACHE[cache_key]
+    
     model_path = _resolve_model_path(model_name)
     if _is_placeholder_model(model_path):
         return (
@@ -225,7 +246,8 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
             "та замініть вміст `models/IEE_MedCAT_v1/` на реальний MedCAT пак.",
             "<div class='medcat-highlight'></div>",
         )
-    cat = load_model_pack_auto(model_path)
+    
+    cat = _get_cached_model(model_path)
     raw_result = extract_entities(cat, text)
     entities = raw_result.get("entities", {})
 
@@ -261,7 +283,9 @@ def _run_extraction(text: str, model_name: str, min_accuracy: float) -> tuple[li
     json_safe = _to_json_safe(raw_result)
     highlight_html = _render_highlight(text, raw_result)
 
-    return rows, json_safe, highlight_html, message
+    result = (rows, json_safe, highlight_html, message)
+    _EXTRACTION_CACHE[cache_key] = result
+    return result
 
 
 def build_demo() -> gr.Blocks:
@@ -349,8 +373,21 @@ def build_demo() -> gr.Blocks:
     return demo
 
 
+def _preload_default_model() -> None:
+    """Preload the default model to avoid first-request delay."""
+    try:
+        model_path = _resolve_model_path(PREFERRED_MODEL)
+        if not _is_placeholder_model(model_path):
+            _get_cached_model(model_path)
+    except Exception as e:
+        print(f"Failed to preload default model: {e}")
+
+
 def launch(*, share: bool = False, server_port: int | None = None) -> None:
     """Launch the Gradio demo server."""
+    # Preload default model to avoid first-request delay
+    _preload_default_model()
+    
     demo = build_demo()
     demo.launch(share=share, server_port=server_port)
 

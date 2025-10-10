@@ -20,7 +20,11 @@ def extract_entities(cat: "CAT", text: str) -> dict:
     Здійснити витяг медичних сутностей з тексту.
     Повертає словник результатів.
     """
-    return cat.get_entities(text, only_cui=False)
+    # Use extract_entities for CustomCAT, get_entities for regular CAT
+    if hasattr(cat, 'extract_entities'):
+        return cat.extract_entities(text)
+    else:
+        return cat.get_entities(text, only_cui=False)
 
 
 if __name__ == "__main__":
