@@ -715,7 +715,7 @@ def build_demo() -> gr.Blocks:
         with gr.Row():
             entities_table = gr.Dataframe(
                 headers=[
-                    "Ківорд",
+                    "Keyword",
                     "Хінти (Keyword)",
                     "Кластер",
                     "Хінти (Value)",
@@ -728,14 +728,14 @@ def build_demo() -> gr.Blocks:
             )
             hint_entities_table = gr.Dataframe(
                 headers=[
-                    "Ківорд",
+                    "Keyword",
                     "Текст",
                     "Кластер",
                 ],
                 datatype=["str", "str", "str"],
                 row_count=(0, "dynamic"),
                 col_count=3,
-                label="HintNER Підказки",
+                label="VectorNER Prediction",
                 value=[],
             )
             raw_json = gr.JSON(label="Сирий результат MedCAT")
