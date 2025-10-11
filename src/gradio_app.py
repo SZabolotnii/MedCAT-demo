@@ -59,6 +59,83 @@ SAMPLE_TEXTS: dict[str, str] = {
     ),
 }
 
+def _canonical_keyword(payload: dict[str, Any]) -> str:
+    """Return canonical keyword/name for display."""
+    keyword = payload.get("keyword")
+    if keyword:
+        return str(keyword)
+
+    for hint in payload.get("value_hints") or []:
+        rule_keyword = hint.get("rule_keyword")
+        if rule_keyword:
+            return str(rule_keyword)
+
+    meta = payload.get("meta_anns") or {}
+    if isinstance(meta, dict):
+        keyword_meta = meta.get("keyword")
+        if isinstance(keyword_meta, dict):
+            value = keyword_meta.get("value")
+            if value:
+                return str(value)
+
+    fallback = (
+        payload.get("pretty_name")
+        or payload.get("detected_name")
+        or payload.get("cui")
+        or ""
+    )
+    return str(fallback)
+
+
+def _format_keyword_hints(entity: dict[str, Any]) -> str:
+    """Collect keyword-level hints from entity metadata."""
+    candidates: list[str] = []
+
+    for hint in entity.get("value_hints") or []:
+        rule_keyword = hint.get("rule_keyword")
+        if rule_keyword:
+            candidates.append(str(rule_keyword))
+
+    meta_anns = entity.get("meta_anns")
+    if isinstance(meta_anns, dict):
+        keyword_meta = meta_anns.get("keyword")
+        if isinstance(keyword_meta, dict):
+            value = keyword_meta.get("value")
+            if value:
+                candidates.append(str(value))
+
+    if not candidates:
+        return "—"
+
+    # Preserve order while removing duplicates
+    unique_ordered = list(dict.fromkeys(candidates))
+    return "; ".join(unique_ordered)
+
+
+def _format_value_hints(entity: dict[str, Any]) -> str:
+    """Collect value-level hints with contextual details."""
+    formatted: list[str] = []
+
+    for hint in entity.get("value_hints") or []:
+        parts: list[str] = []
+        value = hint.get("value")
+        pattern = hint.get("pattern")
+        hint_type = hint.get("type")
+
+        if value:
+            parts.append(str(value))
+        if pattern and pattern != value:
+            parts.append(f"pattern: {pattern}")
+        if hint_type:
+            parts.append(f"type: {hint_type}")
+
+        if parts:
+            formatted.append(", ".join(parts))
+
+    if not formatted:
+        return "—"
+
+    return "; ".join(formatted)
 
 
 @dataclass(frozen=True)
@@ -76,7 +153,7 @@ class EntityRow:
     @classmethod
     def from_raw(cls, payload: dict[str, Any], cluster_title: str) -> "EntityRow":
         return cls(
-            pretty_name=payload.get("pretty_name", ""),
+            pretty_name=_canonical_keyword(payload),
             cluster_title=cluster_title,
             detected_name=payload.get("detected_name", ""),
             accuracy=float(payload.get("acc", 0.0) or 0.0),
@@ -166,7 +243,7 @@ def _render_highlight(text: str, raw_result: Dict[str, Any]) -> str:
                     "start": start,
                     "end": end,
                     "type": "keyword",
-                    "label": entity.get("pretty_name") or entity.get("detected_name") or entity.get("cui"),
+                    "label": _canonical_keyword(entity),
                 },
             )
 
@@ -302,7 +379,7 @@ def _run_extraction(
     entities = raw_result.get("entities", {})
     hint_entities = raw_result.get("hint_entities") or []
 
-    rows = []
+    rows: list[list[Any]] = []
     cluster_map = _cluster_titles()
     for entity in entities.values():
         cluster_title = "—"
@@ -317,27 +394,28 @@ def _run_extraction(
             cluster_title = cluster_map.get(cui) or cluster_map.get(cui.lower(), "—")
         row = EntityRow.from_raw(entity, cluster_title=cluster_title)
         if row.accuracy >= min_accuracy:
-            rows.append([
-                row.pretty_name,
-                row.cluster_title,
-                row.detected_name,
-                f"{row.accuracy:.3f}",
-                row.start,
-                row.end,
-            ])
+            keyword_hints = _format_keyword_hints(entity)
+            value_hints = _format_value_hints(entity)
+            rows.append(
+                [
+                    row.pretty_name,
+                    row.cluster_title,
+                    keyword_hints,
+                    value_hints,
+                ]
+            )
 
     hint_rows: list[list[Any]] = []
     for hint in hint_entities:
         hint_rows.append(
             [
-                hint.get("text", ""),
-                hint.get("label", ""),
-                hint.get("hint_matched_text", ""),
-                hint.get("hint_id", ""),
-                hint.get("hint_source", "") or "",
-                hint.get("hint_cluster_title", "") or "",
-                hint.get("start", -1),
-                hint.get("end", -1),
+                hint.get("hint_matched_text") or hint.get("text", ""),
+                hint.get("hint_canonical_keyword")
+                or hint.get("label")
+                or hint.get("hint_term")
+                or hint.get("hint_id")
+                or "",
+                hint.get("hint_cluster_title") or "",
             ]
         )
 
@@ -427,10 +505,15 @@ def build_demo() -> gr.Blocks:
 
         with gr.Row():
             entities_table = gr.Dataframe(
-                headers=["Назва", "Кластер", "Виявлене значення", "Впевненість", "Початок", "Кінець"],
-                datatype=["str", "str", "str", "str", "number", "number"],
+                headers=[
+                    "Канонічний ківорд",
+                    "Кластер",
+                    "Хінти (Keyword)",
+                    "Хінти (Value)",
+                ],
+                datatype=["str", "str", "str", "str"],
                 row_count=(0, "dynamic"),
-                col_count=6,
+                col_count=4,
                 label="Розпізнані сутності",
                 value=[],
             )
@@ -438,16 +521,11 @@ def build_demo() -> gr.Blocks:
                 headers=[
                     "Текст",
                     "Канонічний ківорд",
-                    "Фактичний збіг",
-                    "Hint ID",
-                    "Джерело",
                     "Кластер",
-                    "Початок",
-                    "Кінець",
                 ],
-                datatype=["str", "str", "str", "str", "str", "str", "number", "number"],
+                datatype=["str", "str", "str"],
                 row_count=(0, "dynamic"),
-                col_count=8,
+                col_count=3,
                 label="HintNER Підказки",
                 value=[],
             )
