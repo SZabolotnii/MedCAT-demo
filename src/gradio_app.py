@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import csv
 import html
+import re
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Tuple
@@ -30,6 +31,7 @@ except ImportError:  # pragma: no cover - fallback when run as a script
 PROJECT_ROOT = PACKAGE_ROOT.parent
 MODELS_DIR = PROJECT_ROOT / "models"
 CLUSTER_MAP: Dict[str, str] | None = None
+CUI_CANONICAL_MAP: Dict[str, str] | None = None
 
 # Global model cache to avoid reloading models on each request
 _MODEL_CACHE: Dict[str, Any] = {}
@@ -78,6 +80,14 @@ def _canonical_keyword(payload: dict[str, Any]) -> str:
             if value:
                 return str(value)
 
+    cui = payload.get("cui")
+    if cui:
+        canonical_map = _canonical_keywords()
+        cui_str = str(cui).strip()
+        canonical = canonical_map.get(cui_str) or canonical_map.get(cui_str.upper()) or canonical_map.get(cui_str.lower())
+        if canonical:
+            return canonical
+
     fallback = (
         payload.get("pretty_name")
         or payload.get("detected_name")
@@ -87,14 +97,29 @@ def _canonical_keyword(payload: dict[str, Any]) -> str:
     return str(fallback)
 
 
-def _format_keyword_hints(entity: dict[str, Any]) -> str:
+def _format_keyword_hints(entity: dict[str, Any], *, extra: list[str] | None = None) -> str:
     """Collect keyword-level hints from entity metadata."""
     candidates: list[str] = []
+
+    canonical = (
+        entity.get("pretty_name")
+        or entity.get("detected_name")
+        or entity.get("keyword")
+        or entity.get("cui")
+        or ""
+    )
+    canonical_norm = str(canonical).strip().lower()
+
+    source_value = entity.get("source_value")
+    if source_value:
+        candidates.append(str(source_value))
 
     for hint in entity.get("value_hints") or []:
         rule_keyword = hint.get("rule_keyword")
         if rule_keyword:
-            candidates.append(str(rule_keyword))
+            rule_str = str(rule_keyword)
+            if rule_str.strip().lower() != canonical_norm:
+                candidates.append(rule_str)
 
     meta_anns = entity.get("meta_anns")
     if isinstance(meta_anns, dict):
@@ -104,6 +129,9 @@ def _format_keyword_hints(entity: dict[str, Any]) -> str:
             if value:
                 candidates.append(str(value))
 
+    if extra:
+        candidates.extend(extra)
+
     if not candidates:
         return "—"
 
@@ -112,18 +140,142 @@ def _format_keyword_hints(entity: dict[str, Any]) -> str:
     return "; ".join(unique_ordered)
 
 
-def _format_value_hints(entity: dict[str, Any]) -> str:
+_HINT_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9%./+-]+")
+_HINT_STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "with",
+    "without",
+    "of",
+    "to",
+    "for",
+    "in",
+    "on",
+    "at",
+    "by",
+    "from",
+    "into",
+    "onto",
+    "than",
+    "that",
+    "this",
+    "these",
+    "those",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "patient",
+    "patients",
+    "male",
+    "female",
+    "man",
+    "woman",
+    "boy",
+    "girl",
+    "complaint",
+    "complaints",
+    "history",
+    "symptom",
+    "symptoms",
+    "about",
+    "because",
+    "since",
+    "due",
+    "after",
+    "before",
+    "during",
+    "without",
+}
+
+
+def _normalize_hint_token(token: str) -> str:
+    """Normalize token for stopword comparison."""
+    cleaned = re.sub(r"^[^A-Za-z0-9%]+|[^A-Za-z0-9%]+$", "", token)
+    return cleaned.lower()
+
+
+def _select_adjacent_token(sequence: str, *, reverse: bool) -> str | None:
+    """Select nearest meaningful token from a text sequence."""
+    tokens = [tok for tok in _HINT_TOKEN_PATTERN.findall(sequence) if tok.strip()]
+    iterable = reversed(tokens) if reverse else iter(tokens)
+    for raw in iterable:
+        normalized = _normalize_hint_token(raw)
+        if not normalized or normalized in _HINT_STOPWORDS:
+            continue
+        return raw.strip()
+    return None
+
+
+def _refine_value_snippet(snippet: str, entity: dict[str, Any], *, text: str) -> str | None:
+    """Derive a compact value snippet close to the entity surface."""
+    snippet = snippet.strip()
+    if not snippet:
+        return None
+
+    source_value = str(entity.get("source_value") or "").strip()
+    if source_value:
+        lower_snippet = snippet.lower()
+        lower_surface = source_value.lower()
+        idx = lower_snippet.find(lower_surface)
+        if idx >= 0:
+            before = snippet[:idx]
+            after = snippet[idx + len(source_value):]
+            after_token = _select_adjacent_token(after, reverse=False)
+            before_token = _select_adjacent_token(before, reverse=True)
+
+            if after_token and any(ch.isdigit() for ch in after_token):
+                return after_token
+
+            if before_token:
+                return before_token
+
+            if after_token:
+                after_norm = _normalize_hint_token(after_token)
+                if after_norm and after_norm not in _HINT_STOPWORDS:
+                    return after_token
+
+    return None
+
+
+def _format_value_hints(entity: dict[str, Any], *, context_text: str) -> str:
     """Collect value-level hints with contextual details."""
     formatted: list[str] = []
 
     for hint in entity.get("value_hints") or []:
         parts: list[str] = []
-        value = hint.get("value")
+        value = hint.get("matched_text") or hint.get("value")
         pattern = hint.get("pattern")
         hint_type = hint.get("type")
+        start = hint.get("start")
+        end = hint.get("end")
+        snippet: str | None = None
 
-        if value:
-            parts.append(str(value))
+        if isinstance(value, str) and value.strip():
+            snippet = value.strip()
+        elif isinstance(start, int) and isinstance(end, int) and end > start:
+            snippet = context_text[start:end].strip()
+
+        if isinstance(start, int) and isinstance(end, int) and end > start and context_text:
+            extracted = context_text[start:end].strip()
+            if extracted:
+                snippet = extracted
+
+        if snippet and len(snippet) > 40:
+            refined = _refine_value_snippet(snippet, entity, text=context_text)
+            if refined:
+                snippet = refined
+        if snippet and len(snippet) > 80:
+            snippet = snippet[:77].rstrip() + "..."
+
+        if snippet:
+            parts.append(snippet)
         if pattern and pattern != value:
             parts.append(f"pattern: {pattern}")
         if hint_type:
@@ -208,12 +360,34 @@ def _cluster_titles() -> Dict[str, str]:
                 if cluster_id and cluster_title:
                     mapping[cluster_id] = cluster_title
                     mapping[cluster_id.lower()] = cluster_title
-                # fallback by CUI if cluster id missing
-                if not cluster_id and cui and cluster_title:
+                if cui and cluster_title:
                     mapping[cui] = cluster_title
                     mapping[cui.lower()] = cluster_title
+                    mapping[cui.upper()] = cluster_title
 
     CLUSTER_MAP = mapping
+    return mapping
+
+
+def _canonical_keywords() -> Dict[str, str]:
+    global CUI_CANONICAL_MAP
+    if CUI_CANONICAL_MAP is not None:
+        return CUI_CANONICAL_MAP
+
+    mapping: Dict[str, str] = {}
+    csv_path = PROJECT_ROOT / "data/internal_short.csv"
+    if csv_path.exists():
+        with csv_path.open("r", encoding="utf-8") as src:
+            reader = csv.DictReader(src)
+            for row in reader:
+                cui = (row.get("uid") or "").strip()
+                keyword = (row.get("keyword") or "").strip()
+                if cui and keyword:
+                    mapping[cui] = keyword
+                    mapping[cui.upper()] = keyword
+                    mapping[cui.lower()] = keyword
+
+    CUI_CANONICAL_MAP = mapping
     return mapping
 
 
@@ -378,6 +552,26 @@ def _run_extraction(
 
     entities = raw_result.get("entities", {})
     hint_entities = raw_result.get("hint_entities") or []
+    combined_matches = raw_result.get("combined_hint_matches") or []
+
+    combined_hint_map: dict[str, list[str]] = {}
+    for match in combined_matches:
+        cui = str(match.get("cui") or "").strip()
+        if not cui:
+            continue
+        hint_value = match.get("source_hint") or match.get("name") or match.get("matched_text")
+        if not hint_value:
+            continue
+        hint_str = str(hint_value)
+        bucket = combined_hint_map.setdefault(cui, [])
+        if hint_str not in bucket:
+            bucket.append(hint_str)
+        cui_upper = cui.upper()
+        if cui_upper not in combined_hint_map:
+            combined_hint_map[cui_upper] = bucket
+        cui_lower = cui.lower()
+        if cui_lower not in combined_hint_map:
+            combined_hint_map[cui_lower] = bucket
 
     rows: list[list[Any]] = []
     cluster_map = _cluster_titles()
@@ -391,11 +585,26 @@ def _run_extraction(
                 break
         if cluster_title == "—":
             cui = str(entity.get("cui", "") or "")
-            cluster_title = cluster_map.get(cui) or cluster_map.get(cui.lower(), "—")
+            cluster_title = (
+                cluster_map.get(cui)
+                or cluster_map.get(cui.upper())
+                or cluster_map.get(cui.lower())
+                or "—"
+            )
         row = EntityRow.from_raw(entity, cluster_title=cluster_title)
         if row.accuracy >= min_accuracy:
-            keyword_hints = _format_keyword_hints(entity)
-            value_hints = _format_value_hints(entity)
+            cui_key = str(row.cui or "")
+            extra_hints: list[str] = []
+            combined_hints = (
+                combined_hint_map.get(cui_key)
+                or combined_hint_map.get(cui_key.upper())
+                or combined_hint_map.get(cui_key.lower())
+                or []
+            )
+            if combined_hints:
+                extra_hints.extend(list(combined_hints))
+            keyword_hints = _format_keyword_hints(entity, extra=extra_hints or None)
+            value_hints = _format_value_hints(entity, context_text=text)
             rows.append(
                 [
                     row.pretty_name,
