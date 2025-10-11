@@ -6,7 +6,16 @@ from dataclasses import dataclass
 import csv
 import html
 from pathlib import Path
+import sys
 from typing import Any, Dict, List, Tuple
+
+PACKAGE_ROOT = Path(__file__).resolve().parent
+
+if __package__ in (None, ""):
+    parent_dir = str(PACKAGE_ROOT.parent)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    __package__ = PACKAGE_ROOT.name
 
 import gradio as gr
 
@@ -18,7 +27,7 @@ except ImportError:  # pragma: no cover - fallback when run as a script
     from extractor import extract_entities
     from utils import load_model_pack_auto
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = PACKAGE_ROOT.parent
 MODELS_DIR = PROJECT_ROOT / "models"
 CLUSTER_MAP: Dict[str, str] | None = None
 
