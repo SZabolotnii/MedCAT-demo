@@ -608,25 +608,25 @@ def _run_extraction(
             rows.append(
                 [
                     row.pretty_name,
-                    row.cluster_title,
                     keyword_hints,
+                    row.cluster_title,
                     value_hints,
                 ]
             )
 
     hint_rows: list[list[Any]] = []
     for hint in hint_entities:
-        hint_rows.append(
-            [
-                hint.get("hint_matched_text") or hint.get("text", ""),
-                hint.get("hint_canonical_keyword")
-                or hint.get("label")
-                or hint.get("hint_term")
-                or hint.get("hint_id")
-                or "",
-                hint.get("hint_cluster_title") or "",
-            ]
-        )
+            hint_rows.append(
+                [
+                    hint.get("hint_canonical_keyword")
+                    or hint.get("label")
+                    or hint.get("hint_term")
+                    or hint.get("hint_id")
+                    or "",
+                    hint.get("hint_matched_text") or hint.get("text", ""),
+                    hint.get("hint_cluster_title") or "",
+                ]
+            )
 
     if not rows:
         message = "Сутностей не знайдено за заданими критеріями."
@@ -715,9 +715,9 @@ def build_demo() -> gr.Blocks:
         with gr.Row():
             entities_table = gr.Dataframe(
                 headers=[
-                    "Канонічний ківорд",
-                    "Кластер",
+                    "Ківорд",
                     "Хінти (Keyword)",
+                    "Кластер",
                     "Хінти (Value)",
                 ],
                 datatype=["str", "str", "str", "str"],
@@ -728,8 +728,8 @@ def build_demo() -> gr.Blocks:
             )
             hint_entities_table = gr.Dataframe(
                 headers=[
+                    "Ківорд",
                     "Текст",
-                    "Канонічний ківорд",
                     "Кластер",
                 ],
                 datatype=["str", "str", "str"],
