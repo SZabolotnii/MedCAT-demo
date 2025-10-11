@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -42,6 +43,12 @@ def _derive_label(canonical_keyword: str, uid: str, cluster_label: str) -> str:
         return cluster_label
     return uid
 
+def _normalize_hint_term(term: str) -> str:
+    """Remove service markers and collapse whitespace in hint terms."""
+    cleaned = re.sub(r"\s*\[combined_hint\]\s*", " ", term)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
 
 def load_hint_lexicon(path: str | Path) -> List[HintConcept]:
     """Load structured hint lexicon entries from JSON."""
@@ -60,14 +67,18 @@ def load_hint_lexicon(path: str | Path) -> List[HintConcept]:
         cluster_id = str(item.get("cluster_id") or "").strip()
         cluster_title = str(item.get("cluster_title") or "").strip()
         cluster_label = _normalize_cluster_label(cluster_title, cluster_id)
-        canonical_keyword = str(item.get("canonical_keyword") or "").strip()
+        canonical_keyword_raw = str(item.get("canonical_keyword") or "").strip()
+        canonical_keyword = _normalize_hint_term(canonical_keyword_raw)
         if not canonical_keyword:
             # Skip entries without canonical keywords to align with ontology keywords only.
             continue
-        pattern_terms = {
-            canonical_keyword,
-            *(term.strip() for term in item.get("keyword_terms") or [] if isinstance(term, str) and term.strip()),
-        }
+        pattern_terms = {canonical_keyword}
+        for term in item.get("keyword_terms") or []:
+            if not isinstance(term, str):
+                continue
+            normalized = _normalize_hint_term(term)
+            if normalized:
+                pattern_terms.add(normalized)
         sources = tuple(
             source.strip() for source in item.get("sources") or [] if isinstance(source, str) and source.strip()
         )
