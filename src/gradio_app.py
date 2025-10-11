@@ -402,12 +402,19 @@ def build_demo() -> gr.Blocks:
             )
             load_example_btn = gr.Button("Завантажити приклад")
 
-        text_input = gr.Textbox(
-            label="Вхідний текст",
-            placeholder="Введіть клінічний запис...",
-            lines=8,
-        )
-        run_button = gr.Button("Запустити")
+        with gr.Row():
+            with gr.Column(scale=1, min_width=400):
+                text_input = gr.Textbox(
+                    label="Вхідний текст",
+                    placeholder="Введіть клінічний запис...",
+                    lines=10,
+                )
+                run_button = gr.Button("Запустити")
+            with gr.Column(scale=1, min_width=400):
+                text_highlight = gr.HTML(
+                    label="Підсвічений текст",
+                    value="<div class='medcat-highlight'></div>",
+                )
 
         def _load_example(example_key: str) -> str:
             return SAMPLE_TEXTS.get(example_key, "")
@@ -445,7 +452,6 @@ def build_demo() -> gr.Blocks:
                 value=[],
             )
             raw_json = gr.JSON(label="Сирий результат MedCAT")
-        text_highlight = gr.HTML(label="Підсвічений текст")
 
         status = gr.Markdown()
 
